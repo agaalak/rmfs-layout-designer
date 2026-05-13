@@ -97,8 +97,8 @@ export function GeneratorFields({
           <option value="internal_distributed">Internal distributed</option>
           <option value="hybrid_external_internal">Hybrid external/internal</option>
           <option value="dense_with_cross_aisles">Dense with cross aisles</option>
-          <option value="flying_v_placeholder">Flying-V placeholder</option>
-          <option value="true_flying_v">True Flying-V diagonal</option>
+          <option value="flying_v_placeholder" disabled>Flying-V placeholder (Disabled)</option>
+          <option value="true_flying_v">True Flying-V diagonal (Experimental)</option>
         </select>
       </label>
       <label className="flex flex-col gap-1">

@@ -2,6 +2,7 @@ import type { Direction, GridCell } from "../models/grid";
 import { allDirections, traversableCellTypes } from "../models/grid";
 import type { WarehouseLayout } from "../models/layout";
 import type { Rack } from "../models/rack";
+import type { RmfsWaypoint, WaypointType } from "../models/rmfsDomain";
 import { cellKey, inBounds, neighbor } from "../utils/gridMath";
 import { rackOccupiedCells } from "../utils/rackFootprint";
 
@@ -18,21 +19,49 @@ export interface RoadGraph {
   adjacency: Map<GraphNode, GraphEdge[]>;
 }
 
+function waypointTypeForCell(cellType: string): WaypointType {
+  if (cellType === "QUEUE") return "queue";
+  if (cellType === "CHARGING") return "charger_approach";
+  if (cellType === "PARKING") return "parking";
+  if (cellType === "ROTATION") return "rotation";
+  if (cellType === "STATION") return "station_approach";
+  return "road";
+}
+
 export function buildCellMap(layout: WarehouseLayout) {
   return new Map(layout.cells.map((cell) => [cellKey(cell), cell]));
 }
 
+export function buildRoutingWaypoints(layout: WarehouseLayout): Map<GraphNode, RmfsWaypoint> {
+  const waypoints = new Map<GraphNode, RmfsWaypoint>();
+  for (const cell of layout.cells) {
+    if (!traversableCellTypes.has(cell.cellType)) continue;
+    const waypointId = cellKey(cell);
+    waypoints.set(waypointId, {
+      waypointId,
+      cell: { row: cell.row, col: cell.col },
+      waypointType: waypointTypeForCell(cell.cellType),
+      allowedDirections: cell.allowedDirections ?? allDirections,
+      neighborWaypointIds: [],
+      travelCost: 1
+    });
+  }
+  for (const waypoint of waypoints.values()) {
+    waypoint.neighborWaypointIds = (waypoint.allowedDirections as Direction[])
+      .map((direction) => cellKey(neighbor(waypoint.cell, direction)))
+      .filter((candidate) => waypoints.has(candidate));
+  }
+  return waypoints;
+}
+
 export function buildRoadGraph(layout: WarehouseLayout): RoadGraph {
   const cellMap = buildCellMap(layout);
-  const nodes = new Set<GraphNode>();
+  const waypoints = buildRoutingWaypoints(layout);
+  const nodes = new Set<GraphNode>(waypoints.keys());
   const adjacency = new Map<GraphNode, GraphEdge[]>();
 
-  for (const cell of layout.cells) {
-    if (traversableCellTypes.has(cell.cellType)) {
-      const key = cellKey(cell);
-      nodes.add(key);
-      adjacency.set(key, []);
-    }
+  for (const node of nodes) {
+    adjacency.set(node, []);
   }
 
   const blockedEdges = new Set(
@@ -41,10 +70,10 @@ export function buildRoadGraph(layout: WarehouseLayout): RoadGraph {
       .map((rule) => `${cellKey(rule.fromCell)}>${cellKey(rule.toCell)}`)
   );
 
-  for (const cell of layout.cells) {
-    const from = cellKey(cell);
-    if (!nodes.has(from)) continue;
-    for (const direction of cell.allowedDirections ?? allDirections) {
+  for (const waypoint of waypoints.values()) {
+    const from = waypoint.waypointId;
+    for (const direction of waypoint.allowedDirections as Direction[]) {
+      const cell = waypoint.cell;
       const target = neighbor(cell, direction);
       if (!inBounds(target, layout.grid)) continue;
       const to = cellKey(target);

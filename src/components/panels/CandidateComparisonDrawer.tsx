@@ -29,7 +29,7 @@ export function CandidateComparisonDrawer({ comparison, onSelect, onSort, onAppl
   if (!comparison) return null;
   const top3 = comparison.summaries.slice(0, 3);
   return (
-    <aside className="absolute bottom-3 left-3 right-3 z-20 max-h-[42vh] overflow-hidden rounded-md border border-slate-300 bg-white shadow-2xl">
+    <aside data-testid="candidate-drawer" className="absolute bottom-3 left-3 right-3 z-20 max-h-[42vh] overflow-hidden rounded-md border border-slate-300 bg-white shadow-2xl">
       <div className="flex items-center justify-between border-b border-border bg-slate-50 px-3 py-2">
         <div>
           <div className="text-sm font-semibold">Generated Layout Candidates</div>

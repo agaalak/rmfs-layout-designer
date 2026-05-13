@@ -120,8 +120,12 @@ export function TopToolbar({ layout, analytics, onNew, onGenerate, onHybrid, onI
           <button className={`toolbar-button h-8 ${appMode === "design" ? "bg-white shadow-sm" : ""}`} onClick={() => setAppMode("design")}>
             Design
           </button>
-          <button className={`toolbar-button h-8 ${appMode === "simulation" ? "bg-white shadow-sm" : ""}`} onClick={() => setAppMode("simulation")}>
-            Simulate
+          <button
+            className={`toolbar-button h-8 ${appMode === "simulation" ? "bg-white shadow-sm" : ""}`}
+            title="Experimental 2D simulator foundation. Use for early playback checks, not final MAPF validation."
+            onClick={() => setAppMode("simulation")}
+          >
+            Simulate <span className="rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-800">Experimental</span>
           </button>
         </div>
         <button className="toolbar-button" onClick={onGenerate}>

@@ -5,7 +5,8 @@
 - React, TypeScript, Vite, Tailwind, Zustand, and React Konva application scaffold.
 - Five-section editor shell: top toolbar, left toolbox, 2D grid canvas, right properties panel, and bottom analytics panel.
 - Manual Mode A layout creation from an empty grid.
-- Procedural Mode B generation for external, internal, distributed, hybrid, dense cross-aisle, placeholder, and true stair-step Flying-V families.
+- Procedural Mode B generation for external, internal, distributed, hybrid, dense cross-aisle, and true stair-step Flying-V families.
+- Stable Mode B families are traditional external, internal centralized, internal distributed, hybrid external/internal, and dense cross-aisle. True Flying-V is Experimental. The old Flying-V placeholder option is disabled in the UI.
 - Generated layout candidate comparison drawer with sortable metrics, top-three comparison, preview, and apply workflow.
 - Hybrid generation that starts from the current layout and fills around protected constraints.
 - Visual object placement for racks, stations, queues, chargers, parking spots, rotation zones, blocked cells, human zones, and docks.
@@ -33,6 +34,9 @@
 - Canvas simulation layers for robots, yaw arrows, carried racks, planned paths, reservation overlays, and station queue occupancy.
 - Simulation control panel with initialize, generate tasks, create manual task, play/pause/step/reset, speed multiplier, display toggles, settings, event filters, and simulation config/log/metrics exports.
 - Versioned layout model support for optional simulation config.
+- Canonical RMFS domain type definitions for waypoints, storage locations, rack/pod operational state, station resources, orders, and controller boundaries.
+- Graph construction now derives routing waypoints before building road edges.
+- Playwright E2E suite for startup, manual editing, validation, import/export, Mode B, Hybrid, and Experimental Simulation Mode.
 - README explaining RMFS concepts, modes, analytics, validation, import/export, limitations, and roadmap.
 
 ## Partially Implemented
@@ -42,9 +46,11 @@
 - Congestion analytics are a shortest-path proxy over a rack sample, not a traffic simulation or MAPF model.
 - Heatmaps are analytical overlays but not yet a full multi-layer GIS-style explorer.
 - SVG export captures layout cells and core layout coloring; PNG captures the current rendered canvas.
-- Simulation reservation handling is useful for early playback, but it is not a complete MAPF solver and does not prove deadlock freedom.
+- Simulation Mode is explicitly Experimental. Reservation handling is useful for early playback, but it is not a complete MAPF solver and does not prove deadlock freedom.
 - Rack rotation-zone routing is modeled in route planning; explicit animated rack rotation dwell/control remains a later refinement.
 - Loaded-robot reservations currently focus on robot cell conflicts; full carried-rack swept-envelope reservation is still future work.
+- Storage locations are not yet first-class persisted records; they are still inferred from rack home cells and rack-storage cells.
+- Orders/order lines and SKU-based rack selection are documented but not yet part of the main UI workflow.
 
 ## Missing Features
 
@@ -62,19 +68,23 @@
 - Validation findings can now select/highlight their related object or cell.
 - Hybrid constraints now include explicit lock flags and protected object/cell handling.
 - Mode B no longer hides all generated alternatives; the comparison drawer stays open until the user applies or closes it.
-- The old Flying-V placeholder has a real first-pass diagonal/stair-step generator under `true_flying_v`.
+- The old Flying-V placeholder is no longer exposed as a selectable workflow; the real first-pass diagonal/stair-step generator is under Experimental `true_flying_v`.
 - Rack footprint validation no longer rejects all oversized racks; it supports up to 2x2 occupied cells and rejects larger footprints.
 - Rack bin duplicate barcode/location, negative quantity, and over-max quantity validation now exists.
 - Import/export now includes schema version `0.2.0`, app version, timestamps, and migration warnings.
 - The simulator pass added a real Simulation Mode instead of leaving robot movement as roadmap-only text.
 - Konva simulator overlays are grouped into a small number of canvas layers, removing fresh layer-count warnings during browser QA.
 - Simulation config import/export now validates JSON and reports friendly errors.
+- Stabilization pass marked Simulation Mode Experimental, disabled the old Flying-V placeholder option, and marked true Flying-V Experimental.
+- Stabilization pass added `docs/REALITY_AUDIT.md` and `docs/RAWSIMO_ALIGNMENT.md`.
+- Stabilization pass added Playwright E2E tests and fixed Vitest configuration so browser specs are not run by the unit-test runner.
 
 ## Test Status
 
 - `npm install`: passed, 0 vulnerabilities.
 - `npm run build`: passed. Vite still reports the expected large single-bundle warning.
 - `npm test -- --run`: 9 files passed, 45 tests passed.
+- `npm run test:e2e -- --workers=1`: 8 browser tests passed.
 - Browser QA at `http://127.0.0.1:5174/`: passed for app load, demo layout, Simulation Mode, initialize robots, generate tasks, step, play/pause, metrics/event log updates, and fresh console health.
 
 ## Completion Plan

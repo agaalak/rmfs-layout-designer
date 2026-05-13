@@ -62,7 +62,7 @@ export function LeftToolbox() {
       </div>
       <div className="rounded-md border border-border bg-slate-50 p-2 text-xs text-muted-foreground">
         {disabled
-          ? "Simulation Mode locks layout editing. Use the simulation panel to initialize robots, create tasks, and control playback."
+          ? "Experimental Simulation Mode locks layout editing. Use the simulation panel for early playback checks, not final MAPF validation."
           : "Drag objects to move. Shift-click or drag a rectangle to multi-select. Press R to rotate, Delete to remove, Ctrl+C/Ctrl+V to copy racks."}
       </div>
     </aside>

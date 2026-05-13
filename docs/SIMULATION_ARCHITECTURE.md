@@ -1,8 +1,8 @@
-# 2D Simulation Architecture
+# Experimental 2D Simulation Architecture
 
 ## Scope
 
-The 2D simulator is a top-down, time-based playback layer over the existing RMFS layout model. It is intended for early operational debugging and layout comparison. It is not a full MAPF solver, not a 3D simulator, and not a physics engine.
+The 2D simulator is an Experimental top-down, time-based playback layer over the existing RMFS layout model. It is intended for early operational debugging and layout comparison. It is not a full MAPF solver, not a 3D simulator, and not a physics engine.
 
 ## State Model
 
@@ -140,7 +140,7 @@ Core functions:
 - `reservationCellsForDisplay(state)`
 - `robotCarriedRackOffsets(robot, layout)`
 
-The engine is deterministic and step-based. The app shell calls `stepSimulation` on an interval while Simulation Mode is running. A manual Step button advances by one simulated second multiplied by the speed setting.
+The engine is deterministic and step-based. The app shell calls `stepSimulation` on an interval while Experimental Simulation Mode is running. A manual Step button advances by one simulated second multiplied by the speed setting.
 
 ## Visual Layers
 

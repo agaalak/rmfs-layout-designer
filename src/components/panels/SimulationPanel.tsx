@@ -66,8 +66,11 @@ export function SimulationPanel({ layout }: { layout: WarehouseLayout }) {
   return (
     <aside className="hidden w-96 shrink-0 flex-col gap-4 overflow-auto border-l border-border bg-panel p-3 xl:flex">
       <div>
-        <div className="panel-title">Simulation</div>
-        <div className="mt-1 text-xs text-muted-foreground">2D time-based playback over the current road graph</div>
+        <div className="flex items-center gap-2">
+          <div className="panel-title">Simulation</div>
+          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">Experimental</span>
+        </div>
+        <div className="mt-1 text-xs text-muted-foreground">2D time-based playback over the current road graph. Not full MAPF or final traffic control.</div>
       </div>
 
       <section className="grid grid-cols-4 gap-2">

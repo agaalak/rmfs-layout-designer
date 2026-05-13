@@ -1,4 +1,4 @@
-# Simulation Progress Audit
+# Experimental Simulation Progress Audit
 
 Date: 2026-05-13
 
@@ -25,9 +25,9 @@ Date: 2026-05-13
 ## 4. Existing Editor Features Verified
 
 - Demo layout loads on the canvas.
-- Design/Simulate toolbar toggle is visible and functional.
+- Design/Simulate toolbar toggle is visible and functional. Simulate is now visibly marked Experimental.
 - Mode B candidate comparison was verified before simulator work: Generate Mode B opens the candidate drawer, and candidate preview/apply works.
-- Simulation pass did not remove existing editor affordances; Design Mode remains the normal manual editor, while Simulation Mode locks editing tools.
+- Simulation pass did not remove existing editor affordances; Design Mode remains the normal manual editor, while Experimental Simulation Mode locks editing tools.
 
 ## 5. Broken UI Discovered Before Simulator Work
 
@@ -36,7 +36,7 @@ Date: 2026-05-13
 
 ## 6. Simulator Features Implemented In This Pass
 
-- Added Design Mode and Simulation Mode to the app shell.
+- Added Design Mode and Experimental Simulation Mode to the app shell.
 - Added simulation models for robots, tasks, route plans, station queues, reservation snapshots, event logs, metrics, and simulation config.
 - Added robot spawning from parking spots first, charging spots second, then perimeter road cells.
 - Added task generation for random nearest-station tasks, HOT/WARM/COLD weighted tasks, and manual rack-to-station tasks.

@@ -86,7 +86,7 @@ export function AppShell() {
         onRunValidation={() => setStatusMessage(`Validation ran: ${validation.issues.length} finding${validation.issues.length === 1 ? "" : "s"}`)}
         onRunAnalytics={() => setStatusMessage(`Analytics refreshed: score ${analytics.scoring.overallLayoutScore.toFixed(1)}, throughput ${analytics.performance.estimatedSystemThroughput.toFixed(1)} /hr`)}
       />
-      <div className="flex items-center justify-between gap-3 border-b border-border bg-slate-50 px-3 py-1 text-xs text-muted-foreground">
+      <div data-testid="status-bar" className="flex items-center justify-between gap-3 border-b border-border bg-slate-50 px-3 py-1 text-xs text-muted-foreground">
         <span>{statusMessage}</span>
         <span className="min-w-max">
           Mode: {appMode} | {history.past.length > 0 ? "Unsaved changes" : "Saved baseline"} | Tool: {activeTool} | Selected: {selected[0]?.id ?? (selectedCell ? `cell ${selectedCell.row},${selectedCell.col}` : "none")} | Hover: {hoverCell ? `${hoverCell.row},${hoverCell.col}` : "none"} | Zoom {(zoom * 100).toFixed(0)}% | Validation errors {validation.issues.filter((issue) => issue.severity === "error").length}

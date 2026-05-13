@@ -4,7 +4,7 @@
 
 RMFS means Robotic Mobile Fulfillment System: a shelf-to-person or pod-to-picker system where robots carry mobile racks or pods between storage areas and workstations. This app helps design the warehouse layout before building a robot movement simulator.
 
-This is not the final 3D robot simulator. It is a visual layout editor plus analytical validation, estimates, and a first 2D time-based robot simulation foundation.
+This is not the final 3D robot simulator, and it is not a full RAWSim-O replacement. It is a visual RMFS layout editor plus analytical validation, estimates, and an experimental 2D time-based robot simulation foundation.
 
 ## What The App Does
 
@@ -21,13 +21,13 @@ This is not the final 3D robot simulator. It is a visual layout editor plus anal
 - Show graph-distance, congestion, or validation heatmaps on the canvas.
 - Compare generated layout candidates before applying one to the editable canvas.
 - Edit rack bins in a table and import/export rack-bin CSV files.
-- Switch to Simulation Mode, initialize robots, generate rack-to-station tasks, play/pause/step a 2D top-down simulation, and export simulation metrics/logs.
+- Switch to Experimental Simulation Mode, initialize robots, generate simple rack-to-station tasks, play/pause/step a 2D top-down simulation, and export simulation metrics/logs.
 
 ## Modes
 
 Mode A, manual, starts with an empty grid. Use the left toolbox to draw roads, rack storage, queues, blocked cells, human zones, and docks, or place racks, stations, chargers, parking, and rotation zones.
 
-Mode B, procedural, opens a generation dialog where you choose the layout family, dimensions, rack fill ratio, aisle spacing, station count, charger count and size, parking count, traffic mode, rotation zone count, and candidate count. The app generates alternatives, opens a candidate comparison drawer, lets you sort by score/density/distance/congestion/errors, previews selected candidates on the canvas, and applies the selected candidate as a fully editable layout.
+Mode B, procedural, opens a generation dialog where you choose the layout family, dimensions, rack fill ratio, aisle spacing, station count, charger count and size, parking count, traffic mode, rotation zone count, and candidate count. The app generates alternatives, opens a candidate comparison drawer, lets you sort by score/density/distance/congestion/errors, previews selected candidates on the canvas, and applies the selected candidate as a fully editable layout. The stable generator focus is traditional external, internal centralized, internal distributed, hybrid external/internal, and dense cross-aisle layouts. True Flying-V remains Experimental, and the old Flying-V placeholder is disabled.
 
 Hybrid mode uses the current layout as fixed constraints. Draw walls, columns, human zones, docks, mandatory aisles, fixed stations, chargers, and parking first, then mark important cells or objects as locked in the property panel. The Hybrid generator fills racks, rack blocks, aisles, queues, rotation zones, and remaining support cells around protected constraints.
 
@@ -109,7 +109,7 @@ These overlays are estimates. They are not robot animation, traffic control, or 
 
 ## 2D Simulation Mode
 
-Simulation Mode adds a time-based top-down playback layer on the current layout. Use the Design/Simulate toggle in the toolbar. In Simulation Mode, layout editing tools are disabled so the road graph, racks, stations, chargers, parking, and blocked cells stay stable while robots are running.
+Simulation Mode is Experimental. It adds a time-based top-down playback layer on the current layout. Use the Design/Simulate toggle in the toolbar. In Simulation Mode, layout editing tools are disabled so the road graph, racks, stations, chargers, parking, and blocked cells stay stable while robots are running.
 
 The simulation panel can:
 
@@ -126,6 +126,12 @@ The simulation panel can:
 Robots follow shortest paths over the layout graph instead of driving straight through racks or walls. The planner respects one-way/two-way traffic rules, avoids blocked cells, uses adjacent rack approach cells for pickup/dropoff, and routes toward station queue/service cells. A basic time-expanded reservation table prevents obvious same-cell and edge-swap conflicts by inserting wait steps when possible.
 
 This is intentionally not full MAPF. There is no CBS, WHCA*, global deadlock proof, or continuous collision envelope solver yet. The current traffic layer is practical for early layout playback and debugging, while the roadmap remains full MAPF and 3D/RTS-style simulation.
+
+## RAWSim-O / RMFS Alignment
+
+RAWSim-O is a discrete-event simulation framework for RMFS decision strategies, not a drawing tool. This app now documents the canonical RMFS concepts in [docs/RAWSIMO_ALIGNMENT.md](docs/RAWSIMO_ALIGNMENT.md): layout instances, physical cells, routing waypoints, storage locations, racks/pods, rack faces and bins, stations, chargers, parking, robots, orders, movement tasks, and controller boundaries.
+
+Current implementation is still layout-editor first. Business orders, SKU-based rack selection, pod reallocation, and full controller strategy comparisons are roadmap work.
 
 ## Import And Export
 
@@ -151,6 +157,7 @@ The Vite dev server runs on port `5174` and is reachable at `http://127.0.0.1:51
 ```bash
 npm test
 npm run build
+npm run test:e2e
 ```
 
 ## Controls
@@ -174,8 +181,10 @@ npm run build
 - No full CBS/WHCA*/MAPF planner yet.
 - Reservation-based collision avoidance handles obvious vertex and edge-swap conflicts, but it is not a complete deadlock-free traffic controller.
 - Analytics remain estimates; simulation metrics are early operational approximations.
+- Storage locations are still mostly represented through rack home cells/rack-storage cells; first-class storage-location records are documented but not fully integrated.
+- Customer orders and SKU-based rack/pod selection are not yet wired into the UI.
 - Multi-cell rack support is limited to up to `2x2` occupied cells.
-- Flying-V is a first-pass stair-step diagonal aisle generator, not a CAD-grade continuous diagonal geometry model.
+- True Flying-V is an Experimental first-pass stair-step diagonal aisle generator, not a CAD-grade continuous diagonal geometry model.
 
 ## Roadmap
 

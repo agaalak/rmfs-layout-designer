@@ -173,7 +173,7 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
     : undefined;
 
   return (
-    <div ref={containerRef} className="relative h-full overflow-hidden bg-slate-100">
+    <div ref={containerRef} data-testid="layout-canvas" className="relative h-full overflow-hidden bg-slate-100">
       <Stage
         ref={stageRef}
         width={width}
