@@ -1,0 +1,607 @@
+import type { ChangeEvent, ReactNode } from "react";
+import type { CardinalOrientation, DemandClass, Rack, RackFaceId } from "../../models/rack";
+import type { ServiceSide, Station, StationType } from "../../models/station";
+import type { ChargingSpot } from "../../models/charging";
+import type { ParkingSpot, ParkingType } from "../../models/parking";
+import type { RotationZone } from "../../models/rotation";
+import type { CellType, Direction, GridCell, LayoutCell, LayoutMode } from "../../models/grid";
+import { allDirections, traversableCellTypes } from "../../models/grid";
+import { makeRackBins } from "../../generators/proceduralGenerator";
+import { selectedObject, useCurrentLayout, useLayoutStore } from "../../store/layoutStore";
+import type { AnalyticsResult } from "../../analytics/types";
+import type { ValidationResult } from "../../validation/validateLayout";
+import type { ValidationIssue } from "../../validation/validateObjects";
+import { cellKey, deriveDimensions } from "../../utils/gridMath";
+import { ValidationPanel } from "../panels/ValidationPanel";
+import { AnalyticsPanel } from "../panels/AnalyticsPanel";
+
+interface RightPropertiesPanelProps {
+  validation: ValidationResult;
+  analytics: AnalyticsResult;
+  onSelectIssue: (issue: ValidationIssue) => void;
+}
+
+function Field({
+  label,
+  children
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="field-label">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+const number = (event: ChangeEvent<HTMLInputElement>) => Number(event.target.value);
+
+export function RightPropertiesPanel({ validation, analytics, onSelectIssue }: RightPropertiesPanelProps) {
+  const layout = useCurrentLayout();
+  const selected = useLayoutStore((state) => state.selected);
+  const selectedCell = useLayoutStore((state) => state.selectedCell);
+  const {
+    updateLayoutMeta,
+    updateRack,
+    updateStation,
+    updateCharger,
+    updateParking,
+    updateRotation,
+    moveObject,
+    setCellDirections,
+    updateCell,
+    toggleSelectedLock
+  } = useLayoutStore();
+  const object = selectedObject(layout, selected);
+  const first = selected[0];
+  const selectedLayoutCell = selectedCell ? layout.cells.find((cell) => cellKey(cell) === cellKey(selectedCell)) : undefined;
+
+  return (
+    <aside className="hidden w-80 shrink-0 flex-col gap-4 overflow-auto border-l border-border bg-panel p-3 xl:flex">
+      <div>
+        <div className="panel-title">Properties</div>
+        <div className="mt-2 text-xs text-muted-foreground">
+          {first ? `${first.kind} selected` : selectedCell ? `Cell ${selectedCell.row}, ${selectedCell.col}` : "Layout settings"}
+        </div>
+      </div>
+      {!first && selectedCell ? (
+        <TrafficCellProperties cell={selectedCell} layoutCell={selectedLayoutCell} setCellDirections={setCellDirections} updateCell={updateCell} toggleLock={toggleSelectedLock} />
+      ) : null}
+      {!first && !selectedCell ? (
+        <section className="flex flex-col gap-2">
+          <Field label="Layout name">
+            <input className="field-input" value={layout.name} onChange={(event) => updateLayoutMeta({ name: event.target.value })} />
+          </Field>
+          <Field label="Mode">
+            <select className="field-input" value={layout.mode} onChange={(event) => updateLayoutMeta({ mode: event.target.value as LayoutMode })}>
+              <option value="manual">Mode A manual</option>
+              <option value="procedural">Mode B procedural</option>
+              <option value="hybrid">Hybrid</option>
+            </select>
+          </Field>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Cell width m">
+              <input className="field-input" type="number" step="0.1" value={layout.grid.cellWidthM} onChange={(event) => updateLayoutMeta({ grid: { ...layout.grid, cellWidthM: number(event) } })} />
+            </Field>
+            <Field label="Cell depth m">
+              <input className="field-input" type="number" step="0.1" value={layout.grid.cellDepthM} onChange={(event) => updateLayoutMeta({ grid: { ...layout.grid, cellDepthM: number(event) } })} />
+            </Field>
+            <Field label="Rows">
+              <input className="field-input" type="number" value={layout.grid.rows} onChange={(event) => updateLayoutMeta({ grid: { ...layout.grid, rows: number(event) } })} />
+            </Field>
+            <Field label="Columns">
+              <input className="field-input" type="number" value={layout.grid.columns} onChange={(event) => updateLayoutMeta({ grid: { ...layout.grid, columns: number(event) } })} />
+            </Field>
+          </div>
+          <div className="rounded-md border border-border bg-slate-50 p-2 text-xs text-muted-foreground">
+            Physical size: {deriveDimensions(layout.grid).widthM.toFixed(1)} m x {deriveDimensions(layout.grid).depthM.toFixed(1)} m
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Physical width m">
+              <input
+                className="field-input"
+                type="number"
+                step="0.1"
+                value={deriveDimensions(layout.grid).widthM}
+                onChange={(event) => updateLayoutMeta({ grid: { ...layout.grid, columns: Math.max(1, Math.round(number(event) / layout.grid.cellWidthM)) } })}
+              />
+            </Field>
+            <Field label="Physical depth m">
+              <input
+                className="field-input"
+                type="number"
+                step="0.1"
+                value={deriveDimensions(layout.grid).depthM}
+                onChange={(event) => updateLayoutMeta({ grid: { ...layout.grid, rows: Math.max(1, Math.round(number(event) / layout.grid.cellDepthM)) } })}
+              />
+            </Field>
+          </div>
+        </section>
+      ) : null}
+      {first?.kind === "rack" && object ? (
+        <RackProperties rack={object as Rack} updateRack={updateRack} move={(row, col) => moveObject(first, { row, col })} toggleLock={toggleSelectedLock} />
+      ) : null}
+      {first?.kind === "station" && object ? (
+        <StationProperties station={object as Station} updateStation={updateStation} move={(row, col) => moveObject(first, { row, col })} toggleLock={toggleSelectedLock} />
+      ) : null}
+      {first?.kind === "charger" && object ? (
+        <ChargerProperties charger={object as ChargingSpot} updateCharger={updateCharger} toggleLock={toggleSelectedLock} />
+      ) : null}
+      {first?.kind === "parking" && object ? (
+        <ParkingProperties parking={object as ParkingSpot} updateParking={updateParking} move={(row, col) => moveObject(first, { row, col })} toggleLock={toggleSelectedLock} />
+      ) : null}
+      {first?.kind === "rotation" && object ? (
+        <RotationProperties zone={object as RotationZone} updateRotation={updateRotation} toggleLock={toggleSelectedLock} />
+      ) : null}
+      <ValidationPanel validation={validation} onSelectIssue={onSelectIssue} />
+      <AnalyticsPanel analytics={analytics} />
+    </aside>
+  );
+}
+
+function TrafficCellProperties({
+  cell,
+  layoutCell,
+  setCellDirections,
+  updateCell,
+  toggleLock
+}: {
+  cell: GridCell;
+  layoutCell?: LayoutCell;
+  setCellDirections: (cell: GridCell, directions: Direction[]) => void;
+  updateCell: (cell: GridCell, patch: Partial<LayoutCell>) => void;
+  toggleLock: () => void;
+}) {
+  const directions = layoutCell?.allowedDirections ?? allDirections;
+  const isTraversable = layoutCell ? traversableCellTypes.has(layoutCell.cellType) : true;
+  const cellTypes: CellType[] = ["EMPTY", "ROAD", "RACK_STORAGE", "QUEUE", "BLOCKED", "HUMAN_ZONE", "DOCK", "ROTATION", "CHARGING", "PARKING", "STATION"];
+  const setDirections = (next: Direction[]) => {
+    setCellDirections(cell, next);
+  };
+  const toggleDirection = (direction: Direction) => {
+    setDirections(directions.includes(direction) ? directions.filter((item) => item !== direction) : [...directions, direction]);
+  };
+
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="rounded-md border border-border bg-slate-50 p-2 text-xs text-muted-foreground">
+        Configure outgoing traffic from row {cell.row}, column {cell.col}. Empty selected cells become road cells when directions are saved.
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded-md border border-border bg-white p-2">
+          <div className="field-label">Cell type</div>
+          <select className="field-input mt-1" value={layoutCell?.cellType ?? "EMPTY"} onChange={(event) => updateCell(cell, { cellType: event.target.value as CellType })}>
+            {cellTypes.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="rounded-md border border-border bg-white p-2">
+          <div className="field-label">Graph status</div>
+          <div className={`mt-1 font-medium ${isTraversable ? "text-emerald-700" : "text-amber-700"}`}>
+            {isTraversable ? "Traversable" : "Not traversable"}
+          </div>
+        </div>
+      </div>
+      <Field label="Zone ID">
+        <input className="field-input" value={layoutCell?.zoneId ?? ""} onChange={(event) => updateCell(cell, { zoneId: event.target.value || undefined })} />
+      </Field>
+      <label className="flex items-center gap-2 rounded-md border border-border bg-white px-2 py-2 text-xs">
+        <input type="checkbox" checked={Boolean(layoutCell?.locked)} onChange={toggleLock} />
+        Locked hybrid constraint
+      </label>
+      <div className="grid grid-cols-2 gap-2">
+        {allDirections.map((direction) => (
+          <label key={direction} className="flex items-center gap-2 rounded-md border border-border bg-white px-2 py-2 text-sm capitalize">
+            <input
+              type="checkbox"
+              checked={directions.includes(direction)}
+              onChange={() => toggleDirection(direction)}
+            />
+            {direction}
+          </label>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <button className="toolbar-button justify-center" type="button" onClick={() => setDirections(allDirections)}>
+          Two-way
+        </button>
+        <button className="toolbar-button justify-center" type="button" onClick={() => setDirections([])}>
+          Block exits
+        </button>
+        <button className="toolbar-button justify-center" type="button" onClick={() => setDirections(["north", "south"])}>
+          North/South
+        </button>
+        <button className="toolbar-button justify-center" type="button" onClick={() => setDirections(["east", "west"])}>
+          East/West
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function RackProperties({
+  rack,
+  updateRack,
+  move,
+  toggleLock
+}: {
+  rack: Rack;
+  updateRack: (id: string, patch: Partial<Rack>) => void;
+  move: (row: number, col: number) => void;
+  toggleLock: () => void;
+}) {
+  const updateFace = (faceId: RackFaceId, rows: number, columns: number) => {
+    updateRack(rack.id, {
+      faces: rack.faces.map((face) =>
+        face.faceId === faceId
+          ? {
+              ...face,
+              rows,
+              columns,
+              bins: makeRackBins(
+                rack.rackId,
+                face.faceId,
+                rows,
+                columns,
+                face.bins[0]?.widthM ?? 0.3,
+                face.bins[0]?.depthM ?? 0.4,
+                face.bins[0]?.heightM ?? 0.3
+              )
+            }
+          : face
+      )
+    });
+  };
+  const updateBinSize = (dimension: "widthM" | "depthM" | "heightM", value: number) => {
+    updateRack(rack.id, {
+      faces: rack.faces.map((face) => ({
+        ...face,
+        bins: face.bins.map((bin) => ({ ...bin, [dimension]: value }))
+      }))
+    });
+  };
+  return (
+    <section className="flex flex-col gap-2">
+      <label className="flex items-center gap-2 rounded-md border border-border bg-white px-2 py-2 text-xs">
+        <input type="checkbox" checked={Boolean(rack.locked)} onChange={toggleLock} />
+        Locked hybrid constraint
+      </label>
+      <Field label="Rack ID">
+        <input className="field-input" value={rack.rackId} onChange={(event) => updateRack(rack.id, { rackId: event.target.value })} />
+      </Field>
+      <Field label="Rack type">
+        <input className="field-input" value={rack.rackTypeId} onChange={(event) => updateRack(rack.id, { rackTypeId: event.target.value })} />
+      </Field>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Home row">
+          <input className="field-input" type="number" value={rack.homeCell.row} onChange={(event) => move(number(event), rack.homeCell.col)} />
+        </Field>
+        <Field label="Home col">
+          <input className="field-input" type="number" value={rack.homeCell.col} onChange={(event) => move(rack.homeCell.row, number(event))} />
+        </Field>
+        <Field label="Footprint W">
+          <input className="field-input" type="number" step="0.1" value={rack.footprintWidthM} onChange={(event) => updateRack(rack.id, { footprintWidthM: number(event) })} />
+        </Field>
+        <Field label="Footprint D">
+          <input className="field-input" type="number" step="0.1" value={rack.footprintDepthM} onChange={(event) => updateRack(rack.id, { footprintDepthM: number(event) })} />
+        </Field>
+        <Field label="Height">
+          <input className="field-input" type="number" step="0.1" value={rack.heightM} onChange={(event) => updateRack(rack.id, { heightM: number(event) })} />
+        </Field>
+        <Field label="Orientation">
+          <select className="field-input" value={rack.currentOrientationDeg} onChange={(event) => updateRack(rack.id, { currentOrientationDeg: Number(event.target.value) as CardinalOrientation })}>
+            {[0, 90, 180, 270].map((orientation) => (
+              <option key={orientation} value={orientation}>
+                {orientation}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      <Field label="Allowed orientations">
+        <input
+          className="field-input"
+          value={rack.allowedOrientationsDeg.join(",")}
+          onChange={(event) =>
+            updateRack(rack.id, {
+              allowedOrientationsDeg: event.target.value
+                .split(",")
+                .map((value) => Number(value.trim()))
+                .filter((value): value is CardinalOrientation => [0, 90, 180, 270].includes(value))
+            })
+          }
+        />
+      </Field>
+      <div className="grid grid-cols-2 gap-2">
+        {rack.faces.map((face) => (
+          <div key={face.faceId} className="rounded-md border border-border bg-white p-2">
+            <div className="mb-2 text-xs font-semibold">Face {face.faceId}</div>
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Rows">
+                <input className="field-input" type="number" value={face.rows} onChange={(event) => updateFace(face.faceId, number(event), face.columns)} />
+              </Field>
+              <Field label="Columns">
+                <input className="field-input" type="number" value={face.columns} onChange={(event) => updateFace(face.faceId, face.rows, number(event))} />
+              </Field>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <Field label="Bin width">
+          <input className="field-input" type="number" step="0.01" value={rack.faces[0]?.bins[0]?.widthM ?? 0.3} onChange={(event) => updateBinSize("widthM", number(event))} />
+        </Field>
+        <Field label="Bin depth">
+          <input className="field-input" type="number" step="0.01" value={rack.faces[0]?.bins[0]?.depthM ?? 0.4} onChange={(event) => updateBinSize("depthM", number(event))} />
+        </Field>
+        <Field label="Bin height">
+          <input className="field-input" type="number" step="0.01" value={rack.faces[0]?.bins[0]?.heightM ?? 0.3} onChange={(event) => updateBinSize("heightM", number(event))} />
+        </Field>
+      </div>
+      <Field label="Demand class">
+        <select className="field-input" value={rack.demandClass ?? "HOT"} onChange={(event) => updateRack(rack.id, { demandClass: event.target.value as DemandClass })}>
+          <option value="HOT">HOT</option>
+          <option value="WARM">WARM</option>
+          <option value="COLD">COLD</option>
+        </select>
+      </Field>
+    </section>
+  );
+}
+
+function StationProperties({
+  station,
+  updateStation,
+  move,
+  toggleLock
+}: {
+  station: Station;
+  updateStation: (id: string, patch: Partial<Station>) => void;
+  move: (row: number, col: number) => void;
+  toggleLock: () => void;
+}) {
+  const queueCells = (length: number, side = station.serviceSide) => {
+    const delta: Record<ServiceSide, [number, number]> = {
+      NORTH: [1, 0],
+      SOUTH: [-1, 0],
+      EAST: [0, -1],
+      WEST: [0, 1]
+    };
+    const [dr, dc] = delta[side];
+    return Array.from({ length }, (_, index) => ({
+      row: station.cell.row + dr * (index + 1),
+      col: station.cell.col + dc * (index + 1)
+    }));
+  };
+  return (
+    <section className="flex flex-col gap-2">
+      <label className="flex items-center gap-2 rounded-md border border-border bg-white px-2 py-2 text-xs">
+        <input type="checkbox" checked={Boolean(station.locked)} onChange={toggleLock} />
+        Locked hybrid constraint
+      </label>
+      <Field label="Station ID">
+        <input className="field-input" value={station.stationId} onChange={(event) => updateStation(station.id, { stationId: event.target.value })} />
+      </Field>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Row">
+          <input className="field-input" type="number" value={station.cell.row} onChange={(event) => move(number(event), station.cell.col)} />
+        </Field>
+        <Field label="Col">
+          <input className="field-input" type="number" value={station.cell.col} onChange={(event) => move(station.cell.row, number(event))} />
+        </Field>
+        <Field label="Type">
+          <select className="field-input" value={station.stationType} onChange={(event) => updateStation(station.id, { stationType: event.target.value as StationType })}>
+            {["PICK", "REPLENISH", "COMBI", "PACK", "QC", "BUFFER"].map((type) => (
+              <option key={type}>{type}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Service side">
+          <select
+            className="field-input"
+            value={station.serviceSide}
+            onChange={(event) => {
+              const serviceSide = event.target.value as ServiceSide;
+              updateStation(station.id, {
+                serviceSide,
+                requiredRackOrientationDeg: { NORTH: 0, EAST: 90, SOUTH: 180, WEST: 270 }[serviceSide] as CardinalOrientation,
+                queueCells: queueCells(station.maxQueueLength, serviceSide)
+              });
+            }}
+          >
+            {["NORTH", "SOUTH", "EAST", "WEST"].map((side) => (
+              <option key={side}>{side}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Required orientation">
+          <select className="field-input" value={station.requiredRackOrientationDeg} onChange={(event) => updateStation(station.id, { requiredRackOrientationDeg: Number(event.target.value) as CardinalOrientation })}>
+            {[0, 90, 180, 270].map((orientation) => (
+              <option key={orientation}>{orientation}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Service time sec">
+          <input className="field-input" type="number" value={station.targetServiceTimeSec} onChange={(event) => updateStation(station.id, { targetServiceTimeSec: number(event) })} />
+        </Field>
+        <Field label="Queue length">
+          <input
+            className="field-input"
+            type="number"
+            value={station.maxQueueLength}
+            onChange={(event) => {
+              const maxQueueLength = Math.max(0, number(event));
+              updateStation(station.id, { maxQueueLength, queueCells: queueCells(maxQueueLength) });
+            }}
+          />
+        </Field>
+      </div>
+      <Field label="Accepted faces">
+        <select className="field-input" value={station.acceptedRackFaces.join("/")} onChange={(event) => updateStation(station.id, { acceptedRackFaces: event.target.value === "A/B" ? ["A", "B"] : [event.target.value as "A" | "B"] })}>
+          <option>A/B</option>
+          <option>A</option>
+          <option>B</option>
+        </select>
+      </Field>
+    </section>
+  );
+}
+
+function ChargerProperties({
+  charger,
+  updateCharger,
+  toggleLock
+}: {
+  charger: ChargingSpot;
+  updateCharger: (id: string, patch: Partial<ChargingSpot>) => void;
+  toggleLock: () => void;
+}) {
+  const first = charger.cells[0];
+  const move = (row: number, col: number) => {
+    updateCharger(charger.id, {
+      cells: charger.cells.map((cell) => ({ row: row + (cell.row - first.row), col: col + (cell.col - first.col) }))
+    });
+  };
+  return (
+    <section className="flex flex-col gap-2">
+      <label className="flex items-center gap-2 rounded-md border border-border bg-white px-2 py-2 text-xs">
+        <input type="checkbox" checked={Boolean(charger.locked)} onChange={toggleLock} />
+        Locked hybrid constraint
+      </label>
+      <Field label="Charger ID">
+        <input className="field-input" value={charger.chargerId} onChange={(event) => updateCharger(charger.id, { chargerId: event.target.value })} />
+      </Field>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Size cells">
+          <select
+            className="field-input"
+            value={charger.cells.length}
+            onChange={(event) => {
+              const size = Number(event.target.value);
+              updateCharger(charger.id, {
+                cells: size === 2 ? [first, { row: first.row, col: first.col + 1 }] : [first],
+                capacityRobots: size
+              });
+            }}
+          >
+            <option value={1}>1 grid</option>
+            <option value={2}>2 grids</option>
+          </select>
+        </Field>
+        <Field label="Capacity robots">
+          <input className="field-input" type="number" value={charger.capacityRobots} onChange={(event) => updateCharger(charger.id, { capacityRobots: number(event) })} />
+        </Field>
+        <Field label="Row">
+          <input className="field-input" type="number" value={first.row} onChange={(event) => move(number(event), first.col)} />
+        </Field>
+        <Field label="Col">
+          <input className="field-input" type="number" value={first.col} onChange={(event) => move(first.row, number(event))} />
+        </Field>
+      </div>
+      <Field label="Charger type">
+        <input className="field-input" value={charger.chargerType ?? ""} onChange={(event) => updateCharger(charger.id, { chargerType: event.target.value })} />
+      </Field>
+    </section>
+  );
+}
+
+function ParkingProperties({
+  parking,
+  updateParking,
+  move,
+  toggleLock
+}: {
+  parking: ParkingSpot;
+  updateParking: (id: string, patch: Partial<ParkingSpot>) => void;
+  move: (row: number, col: number) => void;
+  toggleLock: () => void;
+}) {
+  return (
+    <section className="flex flex-col gap-2">
+      <label className="flex items-center gap-2 rounded-md border border-border bg-white px-2 py-2 text-xs">
+        <input type="checkbox" checked={Boolean(parking.locked)} onChange={toggleLock} />
+        Locked hybrid constraint
+      </label>
+      <Field label="Parking ID">
+        <input className="field-input" value={parking.parkingId} onChange={(event) => updateParking(parking.id, { parkingId: event.target.value })} />
+      </Field>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Row">
+          <input className="field-input" type="number" value={parking.cell.row} onChange={(event) => move(number(event), parking.cell.col)} />
+        </Field>
+        <Field label="Col">
+          <input className="field-input" type="number" value={parking.cell.col} onChange={(event) => move(parking.cell.row, number(event))} />
+        </Field>
+      </div>
+      <Field label="Parking type">
+        <select className="field-input" value={parking.parkingType} onChange={(event) => updateParking(parking.id, { parkingType: event.target.value as ParkingType })}>
+          {["IDLE", "WAITING", "BUFFER", "MAINTENANCE"].map((type) => (
+            <option key={type}>{type}</option>
+          ))}
+        </select>
+      </Field>
+      <div className="rounded-md border border-border bg-slate-50 p-2 text-xs text-muted-foreground">
+        Parking spots occupy exactly 1 grid cell.
+      </div>
+    </section>
+  );
+}
+
+function RotationProperties({
+  zone,
+  updateRotation,
+  toggleLock
+}: {
+  zone: RotationZone;
+  updateRotation: (id: string, patch: Partial<RotationZone>) => void;
+  toggleLock: () => void;
+}) {
+  const first = zone.cells[0];
+  return (
+    <section className="flex flex-col gap-2">
+      <label className="flex items-center gap-2 rounded-md border border-border bg-white px-2 py-2 text-xs">
+        <input type="checkbox" checked={Boolean(zone.locked)} onChange={toggleLock} />
+        Locked hybrid constraint
+      </label>
+      <Field label="Rotation zone ID">
+        <input className="field-input" value={zone.rotationZoneId} onChange={(event) => updateRotation(zone.id, { rotationZoneId: event.target.value })} />
+      </Field>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Rotation time sec">
+          <input className="field-input" type="number" value={zone.rotationTimeSec} onChange={(event) => updateRotation(zone.id, { rotationTimeSec: number(event) })} />
+        </Field>
+        <Field label="Safety clearance">
+          <input className="field-input" type="number" value={zone.safetyClearanceCells} onChange={(event) => updateRotation(zone.id, { safetyClearanceCells: number(event) })} />
+        </Field>
+        <Field label="Row">
+          <input className="field-input" type="number" value={first.row} onChange={(event) => updateRotation(zone.id, { cells: [{ row: number(event), col: first.col }] })} />
+        </Field>
+        <Field label="Col">
+          <input className="field-input" type="number" value={first.col} onChange={(event) => updateRotation(zone.id, { cells: [{ row: first.row, col: number(event) }] })} />
+        </Field>
+      </div>
+      <Field label="Allowed rack types">
+        <input className="field-input" value={zone.allowedRackTypes.join(",")} onChange={(event) => updateRotation(zone.id, { allowedRackTypes: event.target.value.split(",").map((value) => value.trim()).filter(Boolean) })} />
+      </Field>
+      <Field label="Supported orientations">
+        <input
+          className="field-input"
+          value={zone.supportedOrientationsDeg.join(",")}
+          onChange={(event) =>
+            updateRotation(zone.id, {
+              supportedOrientationsDeg: event.target.value
+                .split(",")
+                .map((value) => Number(value.trim()))
+                .filter((value): value is CardinalOrientation => [0, 90, 180, 270].includes(value))
+            })
+          }
+        />
+      </Field>
+    </section>
+  );
+}

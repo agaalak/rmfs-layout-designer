@@ -1,0 +1,156 @@
+# RMFS Layout Designer
+
+`rmfs-layout-designer` is a local visual web app for designing, generating, editing, validating, and analyzing Robotic Mobile Fulfillment Systems warehouse layouts.
+
+RMFS means Robotic Mobile Fulfillment System: a shelf-to-person or pod-to-picker system where robots carry mobile racks or pods between storage areas and workstations. This app helps design the warehouse layout before building a robot movement simulator.
+
+This is not a robot animation tool. It is a visual layout editor plus analytical validation and estimates.
+
+## What The App Does
+
+- Create Mode A manual layouts on a 2D grid canvas.
+- Generate Mode B procedural layouts and then visually modify them.
+- Create Hybrid layouts by drawing fixed constraints first, then filling the rest procedurally.
+- Add, drag, drop, select, multi-select, delete, copy, paste, and rotate layout objects.
+- Configure warehouse rows, columns, cell size, and physical dimensions.
+- Model racks/pods, stations, queues, chargers, parking, rotation zones, blocked cells, human zones, docks, and traffic directions.
+- Run validation and analytics without simulating robot movement.
+- Export/import layout JSON.
+- Export analytics JSON, CSV, Markdown report, PNG, and SVG.
+- Lock manually defined cells/objects so Hybrid generation preserves them.
+- Show graph-distance, congestion, or validation heatmaps on the canvas.
+
+## Modes
+
+Mode A, manual, starts with an empty grid. Use the left toolbox to draw roads, rack storage, queues, blocked cells, human zones, and docks, or place racks, stations, chargers, parking, and rotation zones.
+
+Mode B, procedural, opens a generation dialog where you choose the layout family, dimensions, rack fill ratio, aisle spacing, station count, charger count and size, parking count, traffic mode, rotation zone count, and candidate count. The app generates candidate alternatives with lightweight ranking metadata, loads the best candidate onto the canvas, and keeps the result fully editable.
+
+Hybrid mode uses the current layout as fixed constraints. Draw walls, columns, human zones, docks, mandatory aisles, fixed stations, chargers, and parking first, then mark important cells or objects as locked in the property panel. The Hybrid generator fills racks, rack blocks, aisles, queues, rotation zones, and remaining support cells around protected constraints.
+
+## Grid Size And Rack Footprint
+
+Grid cells are defined in meters, for example `1.2 m x 1.2 m` or `1.0 m x 1.0 m`. The warehouse can be edited by rows and columns. The physical size is derived as:
+
+- `width = columns * cell width`
+- `depth = rows * cell depth`
+
+In this first version, a rack footprint must fit inside one grid cell. A `1.0 m x 1.0 m` rack in a `1.2 m x 1.2 m` cell is valid. A `1.2 m x 1.2 m` rack in a `1.0 m x 1.0 m` cell is shown as a validation error because multi-cell racks are not implemented yet.
+
+## Charging And Parking
+
+Charging spots can occupy one or two grid cells. They cannot overlap racks, stations, parking, blocked cells, queue cells, or human zones, and validation checks reachability through the road graph.
+
+Parking spots occupy exactly one grid cell. Invalid or unreachable parking spots are outlined and listed in the validation panel.
+
+## Racks, Faces, And Bins
+
+The app uses the term rack in code and UI, while also treating racks as RMFS pods conceptually. Each rack has:
+
+- Rack ID and rack type
+- Home cell row/column
+- Footprint and height
+- Current orientation and allowed orientations
+- Face A and Face B
+- Bin rows, columns, barcode/location patterns, SKU and quantity fields in the data model
+- Optional HOT/WARM/COLD demand class
+
+Face A and Face B are visually distinguished on each rack. A rack orientation arrow shows the current orientation.
+
+## Orientation Zones
+
+Stations have a required rack orientation and accepted rack faces. Rotation zones define where a carried rack may be analytically rotated.
+
+The app estimates:
+
+- Whether pre-station rotation is required
+- Whether post-station rotation is required before returning home
+- Whether a compatible rotation zone exists
+- Estimated rotation detour distance
+- Estimated rotation time penalty
+- Invalid orientation and face-access cases
+
+No visual robot movement or animated rack rotation is simulated.
+
+## Analytics
+
+The analytics panel updates after layout changes. The Run analytics toolbar button refreshes the visible status summary; export buttons create JSON, CSV, and Markdown artifacts. Metrics include:
+
+- Storage: total cells, usable cells, rack count, rack storage cells, bin count, density, aisle ratio, hot/warm/cold distribution
+- Distance: average, median, p90, and max rack-to-station distance, charger access, parking access, rotation-zone access
+- Orientation: pre/post rotation percentages, detour distance, time penalty, invalid orientation count, face-access violations
+- Station: workload balance, queue pressure, nearest-station rack assignments, bottleneck estimate
+- Congestion proxy: likely busiest shortest-path edges, dead ends, narrow corridors, congestion risk
+- Performance estimate: cycle distance/time, robot-limited throughput, station-limited throughput, system throughput, robot utilization, station utilization
+
+## Heatmaps
+
+The toolbar heatmap toggle shows an analytical canvas overlay. The mode selector supports:
+
+- Distance: graph distance to the nearest station or station approach.
+- Congestion: likely busy aisle cells from sampled shortest rack-to-station paths.
+- Validation: cells involved in validation findings.
+
+These overlays are estimates. They are not robot animation, traffic control, or MAPF simulation.
+
+## Validation
+
+The validation panel shows error/warning severity, messages, and involved row/column when available. Clicking a validation item selects the related object or cell on the canvas. Validation covers grid dimensions, physical dimensions, rack footprint, charger size, parking size, overlaps, reachability, orientation compatibility, and face access.
+
+## Run Locally
+
+```bash
+npm install
+npm run dev
+```
+
+The Vite dev server runs on port `5174` and is reachable at `http://127.0.0.1:5174/`.
+
+## Run Tests
+
+```bash
+npm test
+npm run build
+```
+
+## Controls
+
+- Select tool: click an object to select it.
+- Shift-click: multi-select.
+- Drag rectangle: rectangle-select objects.
+- Drag object: move and snap to grid.
+- `R`: rotate selected rack or station.
+- `Delete`: delete selected objects.
+- `Ctrl+C` / `Ctrl+V`: copy and paste selected racks.
+- Toolbar buttons: undo, redo, zoom, fit, toggle grid, labels, arrows, and heatmap.
+- Traffic tool: select a cell and edit allowed directions in the property panel.
+- Locking: select a cell or object and use the Locked checkbox in the property panel before Hybrid generation.
+
+## Limitations
+
+- No animated robot simulation yet.
+- No MAPF traffic simulation yet.
+- No collision avoidance model.
+- Analytics are estimates, not discrete-event simulation.
+- Multi-cell rack footprints are rejected in the first version.
+- Flying-V is represented as a future-ready placeholder, not a true diagonal aisle graph.
+
+## Roadmap
+
+- 3D view
+- RTS-style robot simulation
+- MAPF planner
+- Collision avoidance
+- DXF/CAD import
+- Cloud save/load
+
+## Conceptual References
+
+The implementation is original code. These links are conceptual references only:
+
+- RAWSim-O GitHub: https://github.com/merschformann/RAWSim-O
+- RAWSim-O paper: https://arxiv.org/abs/1710.04726
+- RMFS semi-open queueing layout optimization: https://journals.sagepub.com/doi/10.1177/1729881420978543
+- Workstation layout strategies in RMFS: https://www.sciencedirect.com/science/article/pii/S2772390922000233
+- Flying-V RMFS layouts: https://www.mdpi.com/1999-4893/14/7/203
+- Pod arrangement optimization: https://research-information.bris.ac.uk/en/publications/optimization-of-pod-arrangements-for-robotic-mobile-fulfillment-s/
