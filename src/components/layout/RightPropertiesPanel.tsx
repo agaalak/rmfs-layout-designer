@@ -1,10 +1,10 @@
 import type { ChangeEvent, ReactNode } from "react";
-import type { CardinalOrientation, DemandClass, Rack, RackFaceId } from "../../models/rack";
+import type { Bin, CardinalOrientation, DemandClass, Rack, RackFaceId } from "../../models/rack";
 import type { ServiceSide, Station, StationType } from "../../models/station";
 import type { ChargingSpot } from "../../models/charging";
 import type { ParkingSpot, ParkingType } from "../../models/parking";
 import type { RotationZone } from "../../models/rotation";
-import type { CellType, Direction, GridCell, LayoutCell, LayoutMode } from "../../models/grid";
+import type { CellType, Direction, GridCell, GridConfig, LayoutCell, LayoutMode } from "../../models/grid";
 import { allDirections, traversableCellTypes } from "../../models/grid";
 import { makeRackBins } from "../../generators/proceduralGenerator";
 import { selectedObject, useCurrentLayout, useLayoutStore } from "../../store/layoutStore";
@@ -12,6 +12,9 @@ import type { AnalyticsResult } from "../../analytics/types";
 import type { ValidationResult } from "../../validation/validateLayout";
 import type { ValidationIssue } from "../../validation/validateObjects";
 import { cellKey, deriveDimensions } from "../../utils/gridMath";
+import { rackFootprintCells } from "../../utils/rackFootprint";
+import { autoNumberRackLocations, clearRackSkus, rackBinsFromCsv, rackBinsToCsv, regenerateRackBins, updateRackBin } from "../../utils/rackBins";
+import { downloadTextFile } from "../../importExport/exportLayout";
 import { ValidationPanel } from "../panels/ValidationPanel";
 import { AnalyticsPanel } from "../panels/AnalyticsPanel";
 
@@ -121,7 +124,7 @@ export function RightPropertiesPanel({ validation, analytics, onSelectIssue }: R
         </section>
       ) : null}
       {first?.kind === "rack" && object ? (
-        <RackProperties rack={object as Rack} updateRack={updateRack} move={(row, col) => moveObject(first, { row, col })} toggleLock={toggleSelectedLock} />
+        <RackProperties rack={object as Rack} grid={layout.grid} updateRack={updateRack} move={(row, col) => moveObject(first, { row, col })} toggleLock={toggleSelectedLock} />
       ) : null}
       {first?.kind === "station" && object ? (
         <StationProperties station={object as Station} updateStation={updateStation} move={(row, col) => moveObject(first, { row, col })} toggleLock={toggleSelectedLock} />
@@ -226,15 +229,19 @@ function TrafficCellProperties({
 
 function RackProperties({
   rack,
+  grid,
   updateRack,
   move,
   toggleLock
 }: {
   rack: Rack;
+  grid: GridConfig;
   updateRack: (id: string, patch: Partial<Rack>) => void;
   move: (row: number, col: number) => void;
   toggleLock: () => void;
 }) {
+  const footprint = rackFootprintCells(rack, grid);
+  const setRack = (next: Rack) => updateRack(rack.id, { ...next });
   const updateFace = (faceId: RackFaceId, rows: number, columns: number) => {
     updateRack(rack.id, {
       faces: rack.faces.map((face) =>
@@ -265,6 +272,17 @@ function RackProperties({
       }))
     });
   };
+  const editBin = (faceId: RackFaceId, bin: Bin, patch: Partial<Bin>) => {
+    const next = updateRackBin(rack, faceId, bin.binId, patch);
+    updateRack(rack.id, { faces: next.faces });
+  };
+  const importBins = (file?: File) => {
+    if (!file) return;
+    file.text().then((csv) => {
+      const next = rackBinsFromCsv(rack, csv);
+      updateRack(rack.id, { faces: next.faces });
+    });
+  };
   return (
     <section className="flex flex-col gap-2">
       <label className="flex items-center gap-2 rounded-md border border-border bg-white px-2 py-2 text-xs">
@@ -290,6 +308,9 @@ function RackProperties({
         <Field label="Footprint D">
           <input className="field-input" type="number" step="0.1" value={rack.footprintDepthM} onChange={(event) => updateRack(rack.id, { footprintDepthM: number(event) })} />
         </Field>
+        <div className="rounded-md border border-border bg-slate-50 p-2 text-xs text-muted-foreground">
+          Footprint cells: {footprint.columns} x {footprint.rows}
+        </div>
         <Field label="Height">
           <input className="field-input" type="number" step="0.1" value={rack.heightM} onChange={(event) => updateRack(rack.id, { heightM: number(event) })} />
         </Field>
@@ -350,6 +371,71 @@ function RackProperties({
           <option value="COLD">COLD</option>
         </select>
       </Field>
+      <div className="rounded-md border border-border bg-white p-2">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Rack Bin Editor</div>
+            <div className="text-xs text-muted-foreground">{rack.faces.reduce((sum, face) => sum + face.bins.length, 0)} bins across {rack.faces.length} faces</div>
+          </div>
+        </div>
+        <div className="mb-2 grid grid-cols-2 gap-2">
+          <button
+            className="toolbar-button justify-center"
+            type="button"
+            onClick={() => {
+              const hasInventory = rack.faces.some((face) => face.bins.some((bin) => bin.sku || (bin.quantity ?? 0) > 0));
+              if (hasInventory && !window.confirm("Regenerate bins? Existing SKU and quantity values will be preserved by matching face/row/column where possible.")) return;
+              setRack(regenerateRackBins(rack));
+            }}
+          >
+            Regenerate Bins
+          </button>
+          <button className="toolbar-button justify-center" type="button" onClick={() => setRack(clearRackSkus(rack))}>
+            Clear SKUs
+          </button>
+          <button className="toolbar-button justify-center" type="button" onClick={() => setRack(autoNumberRackLocations(rack))}>
+            Auto-number Locations
+          </button>
+          <button className="toolbar-button justify-center" type="button" onClick={() => downloadTextFile(`${rack.rackId}_bins.csv`, rackBinsToCsv(rack), "text/csv")}>
+            Export Rack Bins CSV
+          </button>
+          <label className="toolbar-button col-span-2 cursor-pointer justify-center">
+            Import Rack Bins CSV
+            <input className="hidden" type="file" accept=".csv,text/csv" onChange={(event) => importBins(event.target.files?.[0])} />
+          </label>
+        </div>
+        <div className="max-h-72 overflow-auto rounded border border-border">
+          <table className="w-full min-w-[980px] border-collapse text-[11px]">
+            <thead className="sticky top-0 bg-slate-50 text-left text-slate-600">
+              <tr>
+                {["Face", "Row", "Col", "Bin ID", "Barcode", "Location", "W", "D", "H", "Max qty", "SKU", "Qty"].map((header) => (
+                  <th key={header} className="border-b border-border px-1 py-1 font-semibold">{header}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rack.faces.flatMap((face) =>
+                face.bins.map((bin) => (
+                  <tr key={`${face.faceId}:${bin.binId}`} className="border-b border-slate-100">
+                    <td className="px-1 py-1">{bin.faceId}</td>
+                    <td className="px-1 py-1">{bin.rowIndex}</td>
+                    <td className="px-1 py-1">{bin.columnIndex}</td>
+                    <td className="px-1 py-1"><input className="field-input h-7" value={bin.binId} onChange={(event) => editBin(face.faceId, bin, { binId: event.target.value })} /></td>
+                    <td className="px-1 py-1"><input className="field-input h-7" value={bin.barcode} onChange={(event) => editBin(face.faceId, bin, { barcode: event.target.value })} /></td>
+                    <td className="px-1 py-1"><input className="field-input h-7" value={bin.locationId} onChange={(event) => editBin(face.faceId, bin, { locationId: event.target.value })} /></td>
+                    <td className="px-1 py-1"><input className="field-input h-7 w-16" type="number" step="0.01" value={bin.widthM} onChange={(event) => editBin(face.faceId, bin, { widthM: number(event) })} /></td>
+                    <td className="px-1 py-1"><input className="field-input h-7 w-16" type="number" step="0.01" value={bin.depthM} onChange={(event) => editBin(face.faceId, bin, { depthM: number(event) })} /></td>
+                    <td className="px-1 py-1"><input className="field-input h-7 w-16" type="number" step="0.01" value={bin.heightM} onChange={(event) => editBin(face.faceId, bin, { heightM: number(event) })} /></td>
+                    <td className="px-1 py-1"><input className="field-input h-7 w-20" type="number" value={bin.maxQuantity ?? ""} onChange={(event) => editBin(face.faceId, bin, { maxQuantity: event.target.value === "" ? undefined : number(event) })} /></td>
+                    <td className="px-1 py-1"><input className="field-input h-7" value={bin.sku ?? ""} onChange={(event) => editBin(face.faceId, bin, { sku: event.target.value })} /></td>
+                    <td className="px-1 py-1"><input className="field-input h-7 w-20" type="number" value={bin.quantity ?? ""} onChange={(event) => editBin(face.faceId, bin, { quantity: event.target.value === "" ? undefined : number(event) })} /></td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </section>
   );
 }

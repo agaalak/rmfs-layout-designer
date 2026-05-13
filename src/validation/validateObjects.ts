@@ -1,6 +1,7 @@
 import type { GridCell } from "../models/grid";
 import type { WarehouseLayout } from "../models/layout";
 import { cellKey, inBounds } from "../utils/gridMath";
+import { rackFootprintCells, rackOccupiedCells } from "../utils/rackFootprint";
 
 export interface ValidationIssue {
   id: string;
@@ -80,17 +81,70 @@ export function validateObjects(layout: WarehouseLayout): ValidationIssue[] {
     }
   }
 
+  const layoutCells = new Map(layout.cells.map((cell) => [cellKey(cell), cell]));
+
   for (const rack of layout.racks) {
-    if (rack.footprintWidthM > layout.grid.cellWidthM || rack.footprintDepthM > layout.grid.cellDepthM) {
+    const footprint = rackFootprintCells(rack, layout.grid);
+    if (footprint.rows > 2 || footprint.columns > 2) {
       issues.push({
         id: `rack_footprint_${rack.id}`,
         severity: "error",
-        message: `Rack ${rack.rackId} footprint exceeds one grid cell: ${rack.footprintWidthM}m x ${rack.footprintDepthM}m does not fit inside grid cell ${layout.grid.cellWidthM}m x ${layout.grid.cellDepthM}m. Multi-cell racks are not implemented yet.`,
+        message: `Rack ${rack.rackId} footprint ${rack.footprintWidthM}m x ${rack.footprintDepthM}m maps to ${footprint.columns} x ${footprint.rows} cells. This version supports up to 2 x 2 cells.`,
         cell: rack.homeCell,
         objectId: rack.id
       });
     }
-    claim(rack.homeCell, rack.id, `Rack ${rack.rackId}`);
+    for (const cell of rackOccupiedCells(rack, layout.grid)) {
+      const layoutCell = layoutCells.get(cellKey(cell));
+      if (layoutCell && layoutCell.cellType !== "RACK_STORAGE") {
+        issues.push({
+          id: `rack_cell_type_${rack.id}_${cell.row}_${cell.col}`,
+          severity: "error",
+          message: `Rack ${rack.rackId} overlaps ${layoutCell.cellType} cell at row ${cell.row}, column ${cell.col}.`,
+          cell,
+          objectId: rack.id
+        });
+      }
+      claim(cell, rack.id, `Rack ${rack.rackId}`);
+    }
+    const allBins = rack.faces.flatMap((face) => face.bins);
+    for (const field of ["binId", "barcode", "locationId"] as const) {
+      const seen = new Set<string>();
+      for (const bin of allBins) {
+        const value = bin[field];
+        if (!value) continue;
+        if (seen.has(value)) {
+          issues.push({
+            id: `rack_duplicate_${field}_${rack.id}_${value}`,
+            severity: "error",
+            message: `Rack ${rack.rackId} has duplicate ${field} value "${value}".`,
+            cell: rack.homeCell,
+            objectId: rack.id
+          });
+        }
+        seen.add(value);
+      }
+    }
+    for (const bin of allBins) {
+      if ((bin.quantity ?? 0) < 0) {
+        issues.push({
+          id: `rack_negative_quantity_${rack.id}_${bin.binId}`,
+          severity: "error",
+          message: `Rack ${rack.rackId} bin ${bin.binId} has a negative quantity.`,
+          cell: rack.homeCell,
+          objectId: rack.id
+        });
+      }
+      if (bin.maxQuantity !== undefined && bin.quantity !== undefined && bin.quantity > bin.maxQuantity) {
+        issues.push({
+          id: `rack_quantity_over_max_${rack.id}_${bin.binId}`,
+          severity: "error",
+          message: `Rack ${rack.rackId} bin ${bin.binId} quantity exceeds max quantity.`,
+          cell: rack.homeCell,
+          objectId: rack.id
+        });
+      }
+    }
   }
 
   for (const station of layout.stations) {

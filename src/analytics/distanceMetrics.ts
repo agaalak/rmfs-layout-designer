@@ -1,5 +1,5 @@
 import type { WarehouseLayout } from "../models/layout";
-import { buildRoadGraph, chargerNodes, objectApproachNodes, rotationNodes, stationNodes } from "../graph/graphBuilder";
+import { buildRoadGraph, chargerNodes, rackApproachNodes, rotationNodes, stationNodes } from "../graph/graphBuilder";
 import { dijkstraFromSources, reverseGraph } from "../graph/shortestPath";
 import { cellKey } from "../utils/gridMath";
 import { mean, percentile } from "../utils/units";
@@ -19,7 +19,7 @@ export function calculateDistanceMetrics(layout: WarehouseLayout): DistanceMetri
   const stationSources = layout.stations.flatMap((station) => stationNodes(station, graph));
   const toStation = dijkstraFromSources(reverseGraph(graph), stationSources);
   const rackDistances = layout.racks
-    .map((rack) => objectApproachNodes(layout, rack.homeCell, graph).map((node) => toStation.get(node) ?? Infinity))
+    .map((rack) => rackApproachNodes(layout, rack, graph).map((node) => toStation.get(node) ?? Infinity))
     .map((distances) => Math.min(...distances))
     .filter(Number.isFinite);
 
@@ -35,7 +35,7 @@ export function calculateDistanceMetrics(layout: WarehouseLayout): DistanceMetri
   const rotationSources = layout.rotationZones.flatMap((zone) => rotationNodes(zone, graph));
   const toRotation = dijkstraFromSources(reverseGraph(graph), rotationSources);
   const rackToRotationDistances = layout.racks
-    .map((rack) => objectApproachNodes(layout, rack.homeCell, graph).map((node) => toRotation.get(node) ?? Infinity))
+    .map((rack) => rackApproachNodes(layout, rack, graph).map((node) => toRotation.get(node) ?? Infinity))
     .map((distances) => Math.min(...distances))
     .filter(Number.isFinite);
 

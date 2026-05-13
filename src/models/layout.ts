@@ -33,7 +33,28 @@ export interface ScoringWeights {
   parkingAccess: number;
 }
 
+export interface LayoutCandidateSummary {
+  candidateId: string;
+  layoutId: string;
+  layoutFamily: GenerationParams["layoutFamily"];
+  rackCount: number;
+  stationCount: number;
+  chargerCount: number;
+  parkingCount: number;
+  storageDensity: number;
+  averageRackToStationDistance: number;
+  p90RackToStationDistance: number;
+  congestionRiskScore: number;
+  orientationPenaltyScore: number;
+  overallLayoutScore: number;
+  validationErrorCount: number;
+}
+
 export interface WarehouseLayout {
+  layoutSchemaVersion: string;
+  appVersion: string;
+  createdAt: string;
+  modifiedAt: string;
   layoutId: string;
   name: string;
   mode: LayoutMode;
@@ -83,5 +104,6 @@ export interface GenerationParams {
     | "internal_distributed"
     | "hybrid_external_internal"
     | "dense_with_cross_aisles"
-    | "flying_v_placeholder";
+    | "flying_v_placeholder"
+    | "true_flying_v";
 }

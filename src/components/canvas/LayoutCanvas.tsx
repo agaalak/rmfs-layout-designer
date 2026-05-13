@@ -7,7 +7,8 @@ import type { ValidationResult } from "../../validation/validateLayout";
 import { useCurrentLayout, useLayoutStore } from "../../store/layoutStore";
 import { useUiStore } from "../../store/uiStore";
 import { pointToCell } from "../../utils/geometry";
-import { inBounds, rectCells } from "../../utils/gridMath";
+import { cellKey, inBounds, rectCells } from "../../utils/gridMath";
+import { rackOccupiedCells } from "../../utils/rackFootprint";
 import { exportStagePng } from "../../importExport/exportImage";
 import { CellLayer } from "./CellLayer";
 import { DirectionArrowLayer } from "./DirectionArrowLayer";
@@ -52,7 +53,7 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
     copySelected,
     pasteClipboard
   } = useLayoutStore();
-  const { activeTool, zoom, showGrid, showLabels, showDirectionArrows, showHeatmap, heatmapMode } = useUiStore();
+  const { activeTool, zoom, showGrid, showLabels, showDirectionArrows, showHeatmap, heatmapMode, hoverCell, setHoverCell } = useUiStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
   const isPaintingRef = useRef(false);
@@ -153,6 +154,14 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
         width: cellSize,
         height: cellSize
       }
+      : undefined;
+  const hoverCellType = hoverCell ? layout.cells.find((cell) => cellKey(cell) === cellKey(hoverCell))?.cellType ?? "EMPTY" : undefined;
+  const hoverObject = hoverCell
+    ? layout.racks.find((rack) => rackOccupiedCells(rack, layout.grid).some((cell) => cellKey(cell) === cellKey(hoverCell)))?.rackId ??
+      layout.stations.find((station) => cellKey(station.cell) === cellKey(hoverCell))?.stationId ??
+      layout.chargingSpots.find((charger) => charger.cells.some((cell) => cellKey(cell) === cellKey(hoverCell)))?.chargerId ??
+      layout.parkingSpots.find((parking) => cellKey(parking.cell) === cellKey(hoverCell))?.parkingId ??
+      layout.rotationZones.find((zone) => zone.cells.some((cell) => cellKey(cell) === cellKey(hoverCell)))?.rotationZoneId
     : undefined;
 
   return (
@@ -193,6 +202,7 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
         }}
         onMouseMove={() => {
           const cell = pointerCell();
+          setHoverCell(cell);
           if (isPaintingRef.current && isPaintTool && cell) paintCell(cell);
           if (selectionStart && cell) setSelectionEnd(cell);
         }}
@@ -202,7 +212,7 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
           if (selectionStart && selectionEnd) {
             const cells = new Set(rectCells(selectionStart, selectionEnd).map((cell) => `${cell.row}:${cell.col}`));
             const refs = [
-              ...layout.racks.filter((rack) => cells.has(`${rack.homeCell.row}:${rack.homeCell.col}`)).map((rack) => ({ kind: "rack" as const, id: rack.id })),
+              ...layout.racks.filter((rack) => rackOccupiedCells(rack, layout.grid).some((cell) => cells.has(`${cell.row}:${cell.col}`))).map((rack) => ({ kind: "rack" as const, id: rack.id })),
               ...layout.stations.filter((station) => cells.has(`${station.cell.row}:${station.cell.col}`)).map((station) => ({ kind: "station" as const, id: station.id })),
               ...layout.chargingSpots.filter((charger) => cells.has(`${charger.cells[0].row}:${charger.cells[0].col}`)).map((charger) => ({ kind: "charger" as const, id: charger.id })),
               ...layout.parkingSpots.filter((parking) => cells.has(`${parking.cell.row}:${parking.cell.col}`)).map((parking) => ({ kind: "parking" as const, id: parking.id })),
@@ -216,6 +226,7 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
         onMouseLeave={() => {
           isPaintingRef.current = false;
           lastPaintedCellRef.current = undefined;
+          setHoverCell(undefined);
         }}
       >
         <CellLayer cells={layout.cells} cellSize={cellSize} issueCells={validation.issueCells} />
@@ -236,6 +247,11 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
       <div className="absolute bottom-3 left-3 rounded-md border border-border bg-white/90 px-2 py-1 text-xs text-muted-foreground shadow-panel">
         {layout.grid.rows} x {layout.grid.columns} grid - {layout.grid.cellWidthM} m cells - zoom {(zoom * 100).toFixed(0)}%
       </div>
+      {hoverCell ? (
+        <div className="pointer-events-none absolute right-3 top-3 rounded-md border border-border bg-white/95 px-2 py-1 text-xs text-slate-700 shadow-panel">
+          Row {hoverCell.row}, Col {hoverCell.col} - {hoverObject ?? hoverCellType}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -1,14 +1,21 @@
 import type { CellType, Direction, GridCell, LayoutCell } from "../models/grid";
 import { allDirections } from "../models/grid";
-import type { GenerationParams, WarehouseLayout } from "../models/layout";
+import type { GenerationParams, LayoutCandidateSummary, WarehouseLayout } from "../models/layout";
 import type { Rack, RackFace } from "../models/rack";
 import type { Station, ServiceSide, StationType } from "../models/station";
 import { serviceSideOrientation } from "../models/station";
 import type { ChargingSpot } from "../models/charging";
 import type { ParkingSpot } from "../models/parking";
 import type { RotationZone } from "../models/rotation";
+import { runAnalytics } from "../analytics/runAnalytics";
+import { validateLayout } from "../validation/validateLayout";
 import { cellKey, deriveDimensions, inBounds, neighbors, spreadIndices } from "../utils/gridMath";
 import { makeId, nextSequentialId } from "../utils/ids";
+import { makeBinRecords } from "../utils/rackBins";
+import { rackOccupiedCells } from "../utils/rackFootprint";
+
+export const LAYOUT_SCHEMA_VERSION = "0.2.0";
+export const APP_VERSION = "0.2.0";
 
 type CellMap = Map<string, CellType>;
 
@@ -29,7 +36,7 @@ export const defaultGenerationParams: GenerationParams = {
   parkingSpotCount: 12,
   trafficMode: "two_way",
   rotationZoneCount: 8,
-  candidateCount: 8,
+  candidateCount: 10,
   layoutFamily: "traditional_external"
 };
 
@@ -41,6 +48,10 @@ export function makeLayoutShell(params: GenerationParams, mode: WarehouseLayout[
     cellDepthM: params.cellDepthM
   };
   return {
+    layoutSchemaVersion: LAYOUT_SCHEMA_VERSION,
+    appVersion: APP_VERSION,
+    createdAt: new Date().toISOString(),
+    modifiedAt: new Date().toISOString(),
     layoutId: makeId("layout"),
     name: mode === "manual" ? "Manual RMFS Layout" : "Generated RMFS Layout",
     mode,
@@ -120,6 +131,48 @@ function markAisles(cells: CellMap, params: GenerationParams, dense = false) {
   }
 }
 
+function setRoadCorridor(cells: CellMap, cell: GridCell, params: GenerationParams, radius = 0) {
+  for (let dr = -radius; dr <= radius; dr += 1) {
+    for (let dc = -radius; dc <= radius; dc += 1) {
+      const next = { row: cell.row + dr, col: cell.col + dc };
+      if (inBounds(next, { rows: params.rows, columns: params.columns, cellWidthM: params.cellWidthM, cellDepthM: params.cellDepthM })) {
+        setCell(cells, next, "ROAD");
+      }
+    }
+  }
+}
+
+function diagonalCells(start: GridCell, end: GridCell): GridCell[] {
+  const cells: GridCell[] = [];
+  const steps = Math.max(Math.abs(end.row - start.row), Math.abs(end.col - start.col));
+  for (let step = 0; step <= steps; step += 1) {
+    const t = steps === 0 ? 0 : step / steps;
+    const row = Math.round(start.row + (end.row - start.row) * t);
+    const col = Math.round(start.col + (end.col - start.col) * t);
+    const previous = cells.at(-1);
+    if (!previous || previous.row !== row || previous.col !== col) cells.push({ row, col });
+  }
+  return cells;
+}
+
+function markFlyingVRoads(cells: CellMap, params: GenerationParams) {
+  markPerimeter(cells, params.rows, params.columns);
+  const apex = { row: params.rows - 3, col: Math.floor(params.columns / 2) };
+  const leftWing = { row: 2, col: 2 };
+  const rightWing = { row: 2, col: params.columns - 3 };
+  const corridorRadius = params.rows >= 28 && params.columns >= 36 ? 1 : 0;
+  for (const cell of [...diagonalCells(apex, leftWing), ...diagonalCells(apex, rightWing)]) {
+    setRoadCorridor(cells, cell, params, corridorRadius);
+  }
+  for (let row = 2; row < params.rows - 2; row += Math.max(4, params.horizontalCrossAisleSpacing)) {
+    for (let col = 1; col < params.columns - 1; col += 1) setCell(cells, { row, col }, "ROAD");
+  }
+  for (let row = apex.row; row < params.rows - 1; row += 1) setCell(cells, { row, col: apex.col }, "ROAD");
+  for (let col = Math.max(1, apex.col - 5); col <= Math.min(params.columns - 2, apex.col + 5); col += 1) {
+    setCell(cells, { row: apex.row, col }, "ROAD");
+  }
+}
+
 function makeQueue(cell: GridCell, side: ServiceSide, length: number, params: GenerationParams): GridCell[] {
   const delta: Record<ServiceSide, [number, number]> = {
     NORTH: [1, 0],
@@ -189,6 +242,15 @@ function addInternalStations(cells: CellMap, stations: Station[], params: Genera
   });
 }
 
+function addFlyingVStations(cells: CellMap, stations: Station[], params: GenerationParams) {
+  const apexRow = params.rows - 1;
+  const center = Math.floor(params.columns / 2);
+  const cols = spreadIndices(params.stationCount, Math.max(2, center - 8), Math.min(params.columns - 3, center + 8));
+  cols.forEach((col, index) => {
+    addStation(cells, stations, { row: apexRow, col }, "SOUTH", index < Math.ceil(params.stationCount * 0.75) ? "PICK" : "REPLENISH", params);
+  });
+}
+
 export function makeRackBins(
   rackId: string,
   faceId: "A" | "B",
@@ -200,21 +262,7 @@ export function makeRackBins(
   barcodePrefix = rackId,
   locationPrefix = rackId
 ) {
-  return Array.from({ length: rows * columns }, (_, index) => {
-    const rowIndex = Math.floor(index / columns);
-    const columnIndex = index % columns;
-    return {
-      binId: `${rackId}_${faceId}_${rowIndex + 1}_${columnIndex + 1}`,
-      barcode: `${barcodePrefix}-${faceId}-${rowIndex + 1}-${columnIndex + 1}`,
-      locationId: `${locationPrefix}.${faceId}.${rowIndex + 1}.${columnIndex + 1}`,
-      faceId,
-      rowIndex,
-      columnIndex,
-      widthM,
-      depthM,
-      heightM
-    };
-  });
+  return makeBinRecords(rackId, faceId, rows, columns, { widthM, depthM, heightM, barcodePrefix, locationPrefix });
 }
 
 function makeFaces(rackId: string): RackFace[] {
@@ -230,21 +278,34 @@ function makeFaces(rackId: string): RackFace[] {
 function addRacks(cells: CellMap, racks: Rack[], params: GenerationParams) {
   const candidates: GridCell[] = [];
   const grid = { rows: params.rows, columns: params.columns, cellWidthM: params.cellWidthM, cellDepthM: params.cellDepthM };
+  const footprintColumns = Math.max(1, Math.ceil(params.rackFootprintWidthM / params.cellWidthM));
+  const footprintRows = Math.max(1, Math.ceil(params.rackFootprintDepthM / params.cellDepthM));
+  const occupiedForCandidate = (cell: GridCell) => {
+    const result: GridCell[] = [];
+    for (let rowOffset = 0; rowOffset < footprintRows; rowOffset += 1) {
+      for (let colOffset = 0; colOffset < footprintColumns; colOffset += 1) {
+        result.push({ row: cell.row + rowOffset, col: cell.col + colOffset });
+      }
+    }
+    return result;
+  };
   for (let row = 1; row < params.rows - 1; row += 1) {
     for (let col = 1; col < params.columns - 1; col += 1) {
       const cell = { row, col };
-      const key = cellKey(cell);
-      if (cells.has(key)) continue;
-      if (neighbors(cell, grid).some((neighborCell) => cells.get(cellKey(neighborCell)) === "ROAD" || cells.get(cellKey(neighborCell)) === "QUEUE")) {
+      const occupied = occupiedForCandidate(cell);
+      if (occupied.some((item) => !inBounds(item, grid) || cells.has(cellKey(item)))) continue;
+      if (occupied.some((item) => neighbors(item, grid).some((neighborCell) => cells.get(cellKey(neighborCell)) === "ROAD" || cells.get(cellKey(neighborCell)) === "QUEUE"))) {
         candidates.push(cell);
       }
     }
   }
   const count = Math.max(1, Math.floor(candidates.length * params.rackFillRatio));
   candidates.slice(0, count).forEach((cell, index) => {
+    const occupied = occupiedForCandidate(cell);
+    if (occupied.some((item) => cells.has(cellKey(item)))) return;
     const rackId = nextSequentialId("rack", index);
     const demandClass = index < count * 0.25 ? "HOT" : index < count * 0.65 ? "WARM" : "COLD";
-    setCell(cells, cell, "RACK_STORAGE");
+    occupied.forEach((rackCell) => setCell(cells, rackCell, "RACK_STORAGE"));
     racks.push({
       id: makeId("rack"),
       rackId,
@@ -379,8 +440,11 @@ export function generateProceduralLayout(params: GenerationParams): WarehouseLay
   const parking: ParkingSpot[] = [];
   const rotations: RotationZone[] = [];
 
-  markAisles(cells, params, params.layoutFamily === "dense_with_cross_aisles");
-  if (params.layoutFamily === "internal_centralized") addInternalStations(cells, stations, params, false);
+  if (params.layoutFamily === "true_flying_v") markFlyingVRoads(cells, params);
+  else markAisles(cells, params, params.layoutFamily === "dense_with_cross_aisles");
+
+  if (params.layoutFamily === "true_flying_v") addFlyingVStations(cells, stations, params);
+  else if (params.layoutFamily === "internal_centralized") addInternalStations(cells, stations, params, false);
   else if (params.layoutFamily === "internal_distributed") addInternalStations(cells, stations, params, true);
   else if (params.layoutFamily === "hybrid_external_internal") {
     addExternalStations(cells, stations, { ...params, stationCount: Math.ceil(params.stationCount / 2) });
@@ -395,6 +459,7 @@ export function generateProceduralLayout(params: GenerationParams): WarehouseLay
   return {
     ...layout,
     name: "Mode B Generated Layout",
+    modifiedAt: new Date().toISOString(),
     cells: materializeCells(cells, params.trafficMode),
     racks,
     stations,
@@ -411,7 +476,7 @@ const candidateFamilies: GenerationParams["layoutFamily"][] = [
   "internal_distributed",
   "hybrid_external_internal",
   "dense_with_cross_aisles",
-  "flying_v_placeholder"
+  "true_flying_v"
 ];
 
 function quickCandidateScore(layout: WarehouseLayout) {
@@ -446,6 +511,7 @@ export function generateProceduralCandidates(params: GenerationParams): Warehous
     candidate.layoutId = makeId("candidate");
     candidate.metadata = {
       ...candidate.metadata,
+      candidateId: `candidate_${String(index + 1).padStart(3, "0")}`,
       candidateIndex: index + 1,
       candidateScore: quickCandidateScore(candidate),
       generatedCandidateCount: count
@@ -454,9 +520,54 @@ export function generateProceduralCandidates(params: GenerationParams): Warehous
   });
 }
 
+export function summarizeCandidate(layout: WarehouseLayout): LayoutCandidateSummary {
+  const analytics = runAnalytics(layout);
+  const validation = validateLayout(layout);
+  return {
+    candidateId: String(layout.metadata.candidateId ?? layout.layoutId),
+    layoutId: layout.layoutId,
+    layoutFamily: (layout.metadata.layoutFamily ?? "traditional_external") as GenerationParams["layoutFamily"],
+    rackCount: layout.racks.length,
+    stationCount: layout.stations.length,
+    chargerCount: layout.chargingSpots.length,
+    parkingCount: layout.parkingSpots.length,
+    storageDensity: analytics.storage.storageDensity,
+    averageRackToStationDistance: analytics.distance.averageRackToNearestStationDistance,
+    p90RackToStationDistance: analytics.distance.p90RackToNearestStationDistance,
+    congestionRiskScore: analytics.congestion.congestionRiskScore,
+    orientationPenaltyScore: analytics.scoring.orientationPenaltyScore,
+    overallLayoutScore: analytics.scoring.overallLayoutScore,
+    validationErrorCount: validation.issues.filter((issue) => issue.severity === "error").length
+  };
+}
+
+export function summarizeCandidates(candidates: WarehouseLayout[]): LayoutCandidateSummary[] {
+  return candidates.map(summarizeCandidate);
+}
+
+export function sortCandidateSummaries(
+  summaries: LayoutCandidateSummary[],
+  sortKey: keyof Pick<
+    LayoutCandidateSummary,
+    | "overallLayoutScore"
+    | "storageDensity"
+    | "averageRackToStationDistance"
+    | "p90RackToStationDistance"
+    | "congestionRiskScore"
+    | "validationErrorCount"
+  > = "overallLayoutScore"
+): LayoutCandidateSummary[] {
+  const ascending = ["averageRackToStationDistance", "p90RackToStationDistance", "congestionRiskScore", "validationErrorCount"].includes(sortKey);
+  return [...summaries].sort((a, b) => {
+    const delta = Number(a[sortKey]) - Number(b[sortKey]);
+    return ascending ? delta : -delta;
+  });
+}
+
 export function chooseBestProceduralCandidate(params: GenerationParams): WarehouseLayout {
   const candidates = generateProceduralCandidates(params);
-  const ranked = [...candidates].sort((a, b) => Number(b.metadata.candidateScore ?? 0) - Number(a.metadata.candidateScore ?? 0));
+  const summaries = sortCandidateSummaries(summarizeCandidates(candidates));
+  const ranked = summaries.map((summary) => candidates.find((layout) => layout.layoutId === summary.layoutId)!).filter(Boolean);
   const best = ranked[0];
   return {
     ...best,
@@ -467,7 +578,7 @@ export function chooseBestProceduralCandidate(params: GenerationParams): Warehou
         rank: index + 1,
         layoutId: layout.layoutId,
         family: layout.metadata.layoutFamily,
-        score: layout.metadata.candidateScore,
+        score: summaries[index]?.overallLayoutScore ?? layout.metadata.candidateScore,
         racks: layout.racks.length,
         stations: layout.stations.length
       }))
@@ -483,7 +594,7 @@ export function applyHybridFill(base: WarehouseLayout, params: GenerationParams)
       .map((cell) => [cellKey(cell), cell])
   );
   const occupiedByBaseObjects = new Set<string>([
-    ...base.racks.map((rack) => cellKey(rack.homeCell)),
+    ...base.racks.flatMap((rack) => rackOccupiedCells(rack, base.grid).map(cellKey)),
     ...base.stations.flatMap((station) => [station.cell, ...station.queueCells].map(cellKey)),
     ...base.chargingSpots.flatMap((charger) => charger.cells.map(cellKey)),
     ...base.parkingSpots.map((parking) => cellKey(parking.cell)),
@@ -500,7 +611,7 @@ export function applyHybridFill(base: WarehouseLayout, params: GenerationParams)
       ...generated.cells.filter((cell) => !protectedCells.has(cellKey(cell))),
       ...lockedCells.values()
     ],
-    racks: [...base.racks, ...generated.racks.filter((rack) => !objectTouchesProtected([rack.homeCell]))],
+    racks: [...base.racks, ...generated.racks.filter((rack) => !objectTouchesProtected(rackOccupiedCells(rack, generated.grid)))],
     stations: [...base.stations, ...generated.stations.filter((station) => !objectTouchesProtected([station.cell, ...station.queueCells]))],
     chargingSpots: [...base.chargingSpots, ...generated.chargingSpots.filter((charger) => !objectTouchesProtected(charger.cells))],
     parkingSpots: [...base.parkingSpots, ...generated.parkingSpots.filter((parking) => !objectTouchesProtected([parking.cell]))],

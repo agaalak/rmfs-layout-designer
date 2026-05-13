@@ -13,6 +13,7 @@ import {
   RotateCw,
   Save,
   Search,
+  Keyboard,
   Undo2,
   Upload,
   ZoomIn,
@@ -35,12 +36,15 @@ interface TopToolbarProps {
   onHybrid: () => void;
   onImportExport: () => void;
   onAnalyticsSettings: () => void;
+  onShortcuts: () => void;
+  onStatus: (message: string) => void;
   onRunValidation: () => void;
   onRunAnalytics: () => void;
 }
 
-export function TopToolbar({ layout, analytics, onNew, onGenerate, onHybrid, onImportExport, onAnalyticsSettings, onRunValidation, onRunAnalytics }: TopToolbarProps) {
-  const { setLayout, undo, redo, rotateSelected, loadDemo } = useLayoutStore();
+export function TopToolbar({ layout, analytics, onNew, onGenerate, onHybrid, onImportExport, onAnalyticsSettings, onShortcuts, onStatus, onRunValidation, onRunAnalytics }: TopToolbarProps) {
+  const { setLayout, undo, redo, rotateSelected, loadDemo, newLayout } = useLayoutStore();
+  const dirty = useLayoutStore((state) => state.history.past.length > 0);
   const {
     zoomIn,
     zoomOut,
@@ -55,8 +59,14 @@ export function TopToolbar({ layout, analytics, onNew, onGenerate, onHybrid, onI
 
   const importFile = (file?: File) => {
     if (!file) return;
-    file.text().then((text) => setLayout(importLayoutJson(text)));
+    file.text()
+      .then((text) => {
+        setLayout(importLayoutJson(text));
+        onStatus(`Imported ${file.name}`);
+      })
+      .catch((error: unknown) => onStatus(error instanceof Error ? error.message : "Import failed"));
   };
+  const confirmIfDirty = (message: string) => !dirty || window.confirm(message);
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-2 overflow-x-auto border-b border-border bg-panel px-3 shadow-panel">
@@ -71,14 +81,34 @@ export function TopToolbar({ layout, analytics, onNew, onGenerate, onHybrid, onI
         <button className="toolbar-button" onClick={onNew}>
           <FileDown data-icon="inline-start" /> New layout
         </button>
-        <button className="toolbar-button" onClick={loadDemo}>
+        <button
+          className="toolbar-button"
+          onClick={() => {
+            if (!confirmIfDirty("Load the demo layout and replace the current working layout?")) return;
+            loadDemo();
+            onStatus("Demo layout loaded");
+          }}
+        >
           <Play data-icon="inline-start" /> Load demo
+        </button>
+        <button
+          className="toolbar-button"
+          onClick={() => {
+            if (!confirmIfDirty("Clear the current layout and start with an empty grid?")) return;
+            newLayout();
+            onStatus("Layout cleared");
+          }}
+        >
+          Clear layout
         </button>
         <label className="toolbar-button cursor-pointer">
           <FileInput data-icon="inline-start" /> Open JSON
           <input className="hidden" type="file" accept="application/json" onChange={(event) => importFile(event.target.files?.[0])} />
         </label>
-        <button className="toolbar-button" onClick={() => downloadTextFile(`${layout.layoutId}.json`, exportLayoutJson(layout), "application/json")}>
+        <button className="toolbar-button" onClick={() => {
+          downloadTextFile(`${layout.layoutId}.json`, exportLayoutJson(layout), "application/json");
+          onStatus("Layout JSON exported");
+        }}>
           <Save data-icon="inline-start" /> Save JSON
         </button>
         <button className="toolbar-button" onClick={onImportExport}>
@@ -99,13 +129,22 @@ export function TopToolbar({ layout, analytics, onNew, onGenerate, onHybrid, onI
         <button className="toolbar-button" onClick={onAnalyticsSettings}>
           <BarChart3 data-icon="inline-start" /> Analytics settings
         </button>
-        <button className="toolbar-button" onClick={() => downloadTextFile(`${layout.layoutId}_analytics.json`, exportAnalyticsJson(analytics), "application/json")}>
+        <button className="toolbar-button" onClick={() => {
+          downloadTextFile(`${layout.layoutId}_analytics.json`, exportAnalyticsJson(analytics), "application/json");
+          onStatus("Analytics JSON exported");
+        }}>
           <Download data-icon="inline-start" /> Export analytics
         </button>
-        <button className="toolbar-button" onClick={() => downloadTextFile(`${layout.layoutId}_analytics.csv`, exportAnalyticsCsv(analytics), "text/csv")}>
+        <button className="toolbar-button" onClick={() => {
+          downloadTextFile(`${layout.layoutId}_analytics.csv`, exportAnalyticsCsv(analytics), "text/csv");
+          onStatus("Analytics CSV exported");
+        }}>
           <Upload data-icon="inline-start" /> Export CSV
         </button>
-        <button className="toolbar-button" onClick={() => downloadTextFile(`${layout.layoutId}_report.md`, exportSummaryMarkdown(layout, analytics), "text/markdown")}>
+        <button className="toolbar-button" onClick={() => {
+          downloadTextFile(`${layout.layoutId}_report.md`, exportSummaryMarkdown(layout, analytics), "text/markdown");
+          onStatus("Markdown report exported");
+        }}>
           <Download data-icon="inline-start" /> Export report
         </button>
       </div>
@@ -127,6 +166,9 @@ export function TopToolbar({ layout, analytics, onNew, onGenerate, onHybrid, onI
         </button>
         <button className="icon-button" title="Fit to screen" onClick={fitToScreen}>
           <Search />
+        </button>
+        <button className="icon-button" title="Keyboard shortcuts" onClick={onShortcuts}>
+          <Keyboard />
         </button>
         <button className="icon-button" title="Toggle grid" onClick={toggleGrid}>
           <Grid3X3 />

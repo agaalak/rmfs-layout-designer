@@ -3,7 +3,7 @@ import { cellKey } from "../utils/gridMath";
 import {
   buildRoadGraph,
   chargerNodes,
-  objectApproachNodes,
+  rackApproachNodes,
   rotationNodes,
   stationNodes
 } from "./graphBuilder";
@@ -29,7 +29,7 @@ export function validateConnectivity(layout: WarehouseLayout): ConnectivityResul
   const unreachableRacks = new Set<string>();
   const reachableRacks = new Set<string>();
   for (const rack of layout.racks) {
-    const approaches = objectApproachNodes(layout, rack.homeCell, graph);
+    const approaches = rackApproachNodes(layout, rack, graph);
     if (approaches.length === 0 || !approaches.some((node) => canReachStations.has(node))) {
       unreachableRacks.add(rack.id);
     } else {

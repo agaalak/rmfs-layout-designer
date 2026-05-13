@@ -3,7 +3,7 @@ import { createEmptyLayout } from "../src/generators/proceduralGenerator";
 import { validateLayout } from "../src/validation/validateLayout";
 
 describe("layout validation", () => {
-  it("rejects oversized rack footprints", () => {
+  it("rejects rack footprints beyond supported 2x2 cells", () => {
     const layout = createEmptyLayout({ rows: 6, columns: 6, cellWidthM: 1, cellDepthM: 1 });
     layout.cells = [
       { row: 0, col: 0, cellType: "STATION", allowedDirections: ["east", "south"] },
@@ -31,7 +31,7 @@ describe("layout validation", () => {
         rackId: "rack_001",
         rackTypeId: "rack",
         homeCell: { row: 2, col: 1 },
-        footprintWidthM: 1.2,
+        footprintWidthM: 3.2,
         footprintDepthM: 1.2,
         heightM: 1.8,
         currentOrientationDeg: 0,
@@ -43,7 +43,7 @@ describe("layout validation", () => {
       }
     ];
     const result = validateLayout(layout);
-    expect(result.issues.some((issue) => issue.message.includes("footprint exceeds one grid cell"))).toBe(true);
+    expect(result.issues.some((issue) => issue.message.includes("supports up to 2 x 2 cells"))).toBe(true);
   });
 
   it("rejects charger sizes other than one or two cells", () => {

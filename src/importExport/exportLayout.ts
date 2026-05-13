@@ -1,7 +1,23 @@
 import type { WarehouseLayout } from "../models/layout";
+import { APP_VERSION, LAYOUT_SCHEMA_VERSION } from "../generators/proceduralGenerator";
 
 export function exportLayoutJson(layout: WarehouseLayout): string {
-  return JSON.stringify(layout, null, 2);
+  const now = new Date().toISOString();
+  return JSON.stringify(
+    {
+      ...layout,
+      layoutSchemaVersion: LAYOUT_SCHEMA_VERSION,
+      appVersion: APP_VERSION,
+      createdAt: layout.createdAt ?? now,
+      modifiedAt: now,
+      metadata: {
+        ...layout.metadata,
+        exportedAt: now
+      }
+    },
+    null,
+    2
+  );
 }
 
 export function downloadTextFile(filename: string, content: string, mimeType: string) {

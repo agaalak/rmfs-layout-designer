@@ -2,6 +2,7 @@ import { Arrow, Circle, Group, Layer, Rect, Text } from "react-konva";
 import type { WarehouseLayout, SelectedObjectRef } from "../../models/layout";
 import type { ValidationResult } from "../../validation/validateLayout";
 import { cellToPoint, orientationToVector } from "../../utils/geometry";
+import { rackFootprintCells } from "../../utils/rackFootprint";
 
 interface ObjectLayerProps {
   layout: WarehouseLayout;
@@ -35,6 +36,9 @@ export function ObjectLayer({ layout, selected, validation, cellSize, showLabels
         const point = cellToPoint(rack.homeCell, cellSize);
         const selectedRack = isSelected(selected, "rack", rack.id);
         const [dx, dy] = orientationToVector(rack.currentOrientationDeg);
+        const footprint = rackFootprintCells(rack, layout.grid);
+        const width = footprint.columns * cellSize;
+        const height = footprint.rows * cellSize;
         return (
           <Group
             key={rack.id}
@@ -47,12 +51,10 @@ export function ObjectLayer({ layout, selected, validation, cellSize, showLabels
             }}
             onDragEnd={(event) => onMove({ kind: "rack", id: rack.id }, Math.round(event.target.y() / cellSize), Math.round(event.target.x() / cellSize))}
           >
-            <Rect width={cellSize} height={cellSize} fill="#2563eb" stroke={objectStroke(validation, selectedRack, rack.id)} strokeWidth={selectedRack ? 3 : 1.5} cornerRadius={2} />
-            <Rect width={cellSize} height={cellSize / 2} fill="#60a5fa" opacity={0.95} />
-            <Text text="A" x={2} y={1} fontSize={7} fill="#082f49" fontStyle="bold" />
-            <Text text="B" x={2} y={cellSize / 2 + 1} fontSize={7} fill="#eff6ff" fontStyle="bold" />
+            <Rect width={width} height={height} fill="#2563eb" stroke={objectStroke(validation, selectedRack, rack.id)} strokeWidth={selectedRack ? 4 : 1.5} cornerRadius={2} shadowBlur={selectedRack ? 6 : 0} shadowColor="#14b8a6" />
+            <Rect width={width} height={height / 2} fill="#60a5fa" opacity={0.95} />
             <Arrow
-              points={[cellSize / 2 - dx * 3, cellSize / 2 - dy * 3, cellSize / 2 + dx * 9, cellSize / 2 + dy * 9]}
+              points={[width / 2 - dx * 3, height / 2 - dy * 3, width / 2 + dx * 9, height / 2 + dy * 9]}
               stroke="#082f49"
               fill="#082f49"
               pointerLength={5}
@@ -64,8 +66,8 @@ export function ObjectLayer({ layout, selected, validation, cellSize, showLabels
                 text={shortNumericLabel(rack.rackId)}
                 x={1}
                 y={1}
-                width={cellSize - 2}
-                height={cellSize - 2}
+                width={width - 2}
+                height={height - 2}
                 align="center"
                 verticalAlign="middle"
                 fontSize={8}
@@ -73,7 +75,7 @@ export function ObjectLayer({ layout, selected, validation, cellSize, showLabels
                 fontStyle="bold"
               />
             ) : null}
-            {rack.locked ? <Text text="L" x={cellSize - 7} y={1} fontSize={7} fill="#f8fafc" fontStyle="bold" /> : null}
+            {rack.locked ? <Text text="L" x={width - 7} y={1} fontSize={7} fill="#f8fafc" fontStyle="bold" /> : null}
           </Group>
         );
       })}

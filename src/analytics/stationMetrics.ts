@@ -1,5 +1,5 @@
 import type { WarehouseLayout } from "../models/layout";
-import { buildRoadGraph, objectApproachNodes, stationNodes } from "../graph/graphBuilder";
+import { buildRoadGraph, rackApproachNodes, stationNodes } from "../graph/graphBuilder";
 import { dijkstraFromSources, reverseGraph } from "../graph/shortestPath";
 import { clamp, mean, safeDivide } from "../utils/units";
 
@@ -20,7 +20,7 @@ export function calculateStationMetrics(layout: WarehouseLayout): StationMetrics
     layout.stations.map((station) => [station.stationId, 0])
   );
   for (const rack of layout.racks) {
-    const approaches = objectApproachNodes(layout, rack.homeCell, graph);
+    const approaches = rackApproachNodes(layout, rack, graph);
     let bestStation = layout.stations[0];
     let bestDistance = Infinity;
     for (const station of layout.stations) {

@@ -1,5 +1,5 @@
 import type { WarehouseLayout } from "../models/layout";
-import { buildRoadGraph, objectApproachNodes, rotationNodes, stationNodes } from "../graph/graphBuilder";
+import { buildRoadGraph, rackApproachNodes, rotationNodes, stationNodes } from "../graph/graphBuilder";
 import { dijkstraFromSources, reverseGraph } from "../graph/shortestPath";
 import { mean } from "../utils/units";
 
@@ -53,7 +53,7 @@ export function calculateOrientationMetrics(layout: WarehouseLayout): Orientatio
 
   for (const rack of layout.racks) {
     const rackFaces = new Set(rack.faces.map((face) => face.faceId));
-    const approachNodes = objectApproachNodes(layout, rack.homeCell, graph);
+    const approachNodes = rackApproachNodes(layout, rack, graph);
     for (const station of layout.stations) {
       if (!station.acceptedRackFaces.some((face) => rackFaces.has(face))) {
         faceViolations += 1;

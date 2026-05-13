@@ -1,5 +1,5 @@
 import type { WarehouseLayout } from "../models/layout";
-import { buildRoadGraph, objectApproachNodes, stationNodes } from "../graph/graphBuilder";
+import { buildRoadGraph, rackApproachNodes, stationNodes } from "../graph/graphBuilder";
 import { pathEdges, shortestPathBetweenSets } from "../graph/shortestPath";
 import { clamp, mean } from "../utils/units";
 
@@ -15,7 +15,7 @@ export function calculateCongestionMetrics(layout: WarehouseLayout): CongestionM
   const stationTargets = layout.stations.flatMap((station) => stationNodes(station, graph));
   const usage = new Map<string, number>();
   for (const rack of layout.racks.slice(0, 160)) {
-    const path = shortestPathBetweenSets(graph, objectApproachNodes(layout, rack.homeCell, graph), stationTargets);
+    const path = shortestPathBetweenSets(graph, rackApproachNodes(layout, rack, graph), stationTargets);
     if (!path) continue;
     for (const edge of pathEdges(path.path)) {
       usage.set(edge, (usage.get(edge) ?? 0) + 1);

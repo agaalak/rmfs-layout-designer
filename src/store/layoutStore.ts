@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type { CellType, Direction, GridCell, LayoutCell } from "../models/grid";
 import { allDirections } from "../models/grid";
 import type { ChargingSpot } from "../models/charging";
-import type { GenerationParams, SelectedObjectRef, WarehouseLayout } from "../models/layout";
+import type { GenerationParams, LayoutCandidateSummary, SelectedObjectRef, WarehouseLayout } from "../models/layout";
 import type { ParkingSpot } from "../models/parking";
 import type { Rack } from "../models/rack";
 import type { RotationZone } from "../models/rotation";
@@ -14,10 +14,15 @@ import {
   createEmptyLayout,
   defaultGenerationParams,
   generateProceduralLayout,
-  makeRackBins
+  generateProceduralCandidates,
+  makeRackBins,
+  sortCandidateSummaries,
+  summarizeCandidates
 } from "../generators/proceduralGenerator";
 import { cellKey, deriveDimensions, inBounds } from "../utils/gridMath";
 import { makeId, nextSequentialId } from "../utils/ids";
+import { rackOccupiedCells } from "../utils/rackFootprint";
+import { regenerateRackBins as regenerateRackBinsForRack } from "../utils/rackBins";
 import { pushHistory, redoHistory, undoHistory, type HistoryState } from "./historyStore";
 
 function cloneLayout(layout: WarehouseLayout): WarehouseLayout {
@@ -31,7 +36,7 @@ function cellMap(layout: WarehouseLayout): Map<string, LayoutCell> {
 function objectCells(layout: WarehouseLayout, objectId?: string): GridCell[] {
   if (!objectId) return [];
   const rack = layout.racks.find((item) => item.id === objectId);
-  if (rack) return [rack.homeCell];
+  if (rack) return rackOccupiedCells(rack, layout.grid);
   const station = layout.stations.find((item) => item.id === objectId);
   if (station) return [station.cell, ...station.queueCells];
   const charger = layout.chargingSpots.find((item) => item.id === objectId);
@@ -42,10 +47,25 @@ function objectCells(layout: WarehouseLayout, objectId?: string): GridCell[] {
   return zone?.cells ?? [];
 }
 
+export interface CandidateComparisonState {
+  candidates: WarehouseLayout[];
+  summaries: LayoutCandidateSummary[];
+  selectedCandidateId: string;
+  sortKey: CandidateSortKey;
+}
+
+export type CandidateSortKey =
+  | "overallLayoutScore"
+  | "storageDensity"
+  | "averageRackToStationDistance"
+  | "p90RackToStationDistance"
+  | "congestionRiskScore"
+  | "validationErrorCount";
+
 function lockedObjectAtCell(layout: WarehouseLayout, cell: GridCell) {
   const key = cellKey(cell);
   return (
-    layout.racks.some((rack) => rack.locked && cellKey(rack.homeCell) === key) ||
+    layout.racks.some((rack) => rack.locked && rackOccupiedCells(rack, layout.grid).some((item) => cellKey(item) === key)) ||
     layout.stations.some((station) => station.locked && [station.cell, ...station.queueCells].some((item) => cellKey(item) === key)) ||
     layout.chargingSpots.some((charger) => charger.locked && charger.cells.some((item) => cellKey(item) === key)) ||
     layout.parkingSpots.some((parking) => parking.locked && cellKey(parking.cell) === key) ||
@@ -74,16 +94,53 @@ function upsertCell(layout: WarehouseLayout, cell: GridCell, cellType: CellType)
   return { ...layout, cells: [...map.values()] };
 }
 
+function clearRackCells(layout: WarehouseLayout, rack: Rack): WarehouseLayout {
+  let next = layout;
+  rackOccupiedCells(rack, layout.grid).forEach((cell) => {
+    next = upsertCell(next, cell, "EMPTY");
+  });
+  return next;
+}
+
+function markRackCells(layout: WarehouseLayout, rack: Rack): WarehouseLayout {
+  let next = layout;
+  rackOccupiedCells(rack, layout.grid).forEach((cell) => {
+    next = upsertCell(next, cell, "RACK_STORAGE");
+  });
+  return next;
+}
+
 function removeObjectsAtCell(layout: WarehouseLayout, cell: GridCell): WarehouseLayout {
   const key = cellKey(cell);
-  return {
+  const racksToRemove = layout.racks.filter((rack) => !rack.locked && rackOccupiedCells(rack, layout.grid).some((item) => cellKey(item) === key));
+  const stationsToRemove = layout.stations.filter((station) => !station.locked && cellKey(station.cell) === key);
+  const chargersToRemove = layout.chargingSpots.filter((charger) => !charger.locked && charger.cells.some((item) => cellKey(item) === key));
+  const parkingToRemove = layout.parkingSpots.filter((parking) => !parking.locked && cellKey(parking.cell) === key);
+  const zonesToRemove = layout.rotationZones.filter((zone) => !zone.locked && zone.cells.some((item) => cellKey(item) === key));
+  let next = {
     ...layout,
-    racks: layout.racks.filter((rack) => rack.locked || cellKey(rack.homeCell) !== key),
-    stations: layout.stations.filter((station) => station.locked || cellKey(station.cell) !== key),
-    chargingSpots: layout.chargingSpots.filter((charger) => charger.locked || !charger.cells.some((item) => cellKey(item) === key)),
-    parkingSpots: layout.parkingSpots.filter((parking) => parking.locked || cellKey(parking.cell) !== key),
-    rotationZones: layout.rotationZones.filter((zone) => zone.locked || !zone.cells.some((item) => cellKey(item) === key))
+    racks: layout.racks.filter((rack) => !racksToRemove.some((item) => item.id === rack.id)),
+    stations: layout.stations.filter((station) => !stationsToRemove.some((item) => item.id === station.id)),
+    chargingSpots: layout.chargingSpots.filter((charger) => !chargersToRemove.some((item) => item.id === charger.id)),
+    parkingSpots: layout.parkingSpots.filter((parking) => !parkingToRemove.some((item) => item.id === parking.id)),
+    rotationZones: layout.rotationZones.filter((zone) => !zonesToRemove.some((item) => item.id === zone.id))
   };
+  racksToRemove.flatMap((rack) => rackOccupiedCells(rack, layout.grid)).forEach((item) => {
+    next = upsertCell(next, item, "EMPTY");
+  });
+  stationsToRemove.flatMap((station) => [station.cell, ...station.queueCells]).forEach((item) => {
+    next = upsertCell(next, item, "EMPTY");
+  });
+  chargersToRemove.flatMap((charger) => charger.cells).forEach((item) => {
+    next = upsertCell(next, item, "EMPTY");
+  });
+  parkingToRemove.map((parking) => parking.cell).forEach((item) => {
+    next = upsertCell(next, item, "EMPTY");
+  });
+  zonesToRemove.flatMap((zone) => zone.cells).forEach((item) => {
+    next = upsertCell(next, item, "EMPTY");
+  });
+  return next;
 }
 
 function makeDefaultRack(index: number, homeCell: GridCell): Rack {
@@ -132,9 +189,14 @@ interface LayoutState {
   selectedCell?: GridCell;
   clipboard: SelectedObjectRef[];
   generationParams: GenerationParams;
+  candidateComparison?: CandidateComparisonState;
   setLayout: (layout: WarehouseLayout) => void;
   newLayout: (params?: Partial<GenerationParams>) => void;
   generateModeB: (params: GenerationParams) => void;
+  selectCandidatePreview: (candidateId: string) => void;
+  sortCandidates: (sortKey: CandidateSortKey) => void;
+  applySelectedCandidate: () => void;
+  closeCandidateComparison: () => void;
   generateHybrid: (params: GenerationParams) => void;
   loadDemo: () => void;
   selectObject: (ref: SelectedObjectRef, additive?: boolean) => void;
@@ -158,6 +220,7 @@ interface LayoutState {
   updateCharger: (id: string, patch: Partial<ChargingSpot>) => void;
   updateParking: (id: string, patch: Partial<ParkingSpot>) => void;
   updateRotation: (id: string, patch: Partial<RotationZone>) => void;
+  regenerateRackBins: (id: string) => void;
   updateLayoutMeta: (patch: Partial<WarehouseLayout>) => void;
   updateCell: (cell: GridCell, patch: Partial<LayoutCell>) => void;
   setCellDirections: (cell: GridCell, directions: Direction[]) => void;
@@ -178,33 +241,99 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   selectedCell: undefined,
   clipboard: [],
   generationParams: defaultGenerationParams,
-  setLayout: (layout) => set((state) => ({ history: commit(state.history, layout), selected: [], selectedCell: undefined })),
+  candidateComparison: undefined,
+  setLayout: (layout) => set((state) => ({ history: commit(state.history, { ...layout, modifiedAt: new Date().toISOString() }), selected: [], selectedCell: undefined, candidateComparison: undefined })),
   newLayout: (params) =>
     set((state) => ({
       history: commit(state.history, createEmptyLayout({ ...defaultGenerationParams, ...params })),
       selected: [],
-      selectedCell: undefined
+      selectedCell: undefined,
+      candidateComparison: undefined
     })),
   generateModeB: (params) =>
-    set((state) => ({
-      generationParams: params,
-      history: commit(state.history, chooseBestProceduralCandidate(params)),
-      selected: [],
-      selectedCell: undefined
-    })),
+    set((state) => {
+      const candidates = generateProceduralCandidates(params);
+      const summaries = sortCandidateSummaries(summarizeCandidates(candidates));
+      const selectedCandidateId = summaries[0]?.candidateId ?? String(candidates[0]?.metadata.candidateId ?? candidates[0]?.layoutId);
+      const selectedLayout = candidates.find((candidate) => candidate.metadata.candidateId === selectedCandidateId || candidate.layoutId === selectedCandidateId) ?? chooseBestProceduralCandidate(params);
+      return {
+        generationParams: params,
+        candidateComparison: { candidates, summaries, selectedCandidateId, sortKey: "overallLayoutScore" },
+        history: commit(state.history, {
+          ...selectedLayout,
+          metadata: { ...selectedLayout.metadata, candidatePreview: true, candidateSummaries: summaries }
+        }),
+        selected: [],
+        selectedCell: undefined
+      };
+    }),
+  selectCandidatePreview: (candidateId) =>
+    set((state) => {
+      const comparison = state.candidateComparison;
+      if (!comparison) return {};
+      const candidate = comparison.candidates.find((layout) => layout.metadata.candidateId === candidateId || layout.layoutId === candidateId);
+      if (!candidate) return {};
+      return {
+        candidateComparison: { ...comparison, selectedCandidateId: candidateId },
+        history: commit(state.history, {
+          ...candidate,
+          metadata: { ...candidate.metadata, candidatePreview: true, candidateSummaries: comparison.summaries }
+        }),
+        selected: [],
+        selectedCell: undefined
+      };
+    }),
+  sortCandidates: (sortKey) =>
+    set((state) => {
+      const comparison = state.candidateComparison;
+      if (!comparison) return {};
+      return {
+        candidateComparison: {
+          ...comparison,
+          sortKey,
+          summaries: sortCandidateSummaries(comparison.summaries, sortKey)
+        }
+      };
+    }),
+  applySelectedCandidate: () =>
+    set((state) => {
+      const comparison = state.candidateComparison;
+      if (!comparison) return {};
+      const candidate =
+        comparison.candidates.find((layout) => layout.metadata.candidateId === comparison.selectedCandidateId || layout.layoutId === comparison.selectedCandidateId) ??
+        state.history.present;
+      return {
+        candidateComparison: undefined,
+        history: commit(state.history, {
+          ...candidate,
+          modifiedAt: new Date().toISOString(),
+          metadata: {
+            ...candidate.metadata,
+            candidatePreview: false,
+            appliedCandidateId: comparison.selectedCandidateId,
+            candidateSummaries: comparison.summaries
+          }
+        }),
+        selected: [],
+        selectedCell: undefined
+      };
+    }),
+  closeCandidateComparison: () => set({ candidateComparison: undefined }),
   generateHybrid: (params) =>
     set((state) => ({
       generationParams: params,
       history: commit(state.history, applyHybridFill(state.history.present, params)),
       selected: [],
-      selectedCell: undefined
+      selectedCell: undefined,
+      candidateComparison: undefined
     })),
   loadDemo: () =>
     set((state) => ({
       generationParams: defaultGenerationParams,
       history: commit(state.history, generateProceduralLayout(defaultGenerationParams)),
       selected: [],
-      selectedCell: undefined
+      selectedCell: undefined,
+      candidateComparison: undefined
     })),
   selectObject: (ref, additive = false) =>
     set((state) => ({
@@ -233,8 +362,9 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   addRack: (cell) =>
     set((state) => {
       if (lockedObjectAtCell(state.history.present, cell)) return {};
-      const layout = upsertCell(removeObjectsAtCell(state.history.present, cell), cell, "RACK_STORAGE");
+      let layout = removeObjectsAtCell(state.history.present, cell);
       const rack = makeDefaultRack(layout.racks.length, cell);
+      layout = markRackCells(layout, rack);
       return {
         history: commit(state.history, { ...layout, racks: [...layout.racks, rack] }),
         selected: [{ kind: "rack", id: rack.id }],
@@ -303,8 +433,11 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       if (ref.kind === "rack") {
         const rack = layout.racks.find((item) => item.id === ref.id);
         if (rack?.locked) return {};
-        if (rack) layout = upsertCell(upsertCell(layout, rack.homeCell, "EMPTY"), cell, "RACK_STORAGE");
-        layout = { ...layout, racks: layout.racks.map((item) => (item.id === ref.id ? { ...item, homeCell: cell } : item)) };
+        if (rack) {
+          const movedRack = { ...rack, homeCell: cell };
+          layout = markRackCells(clearRackCells(layout, rack), movedRack);
+          layout = { ...layout, racks: layout.racks.map((item) => (item.id === ref.id ? movedRack : item)) };
+        }
       }
       if (ref.kind === "station") {
         const station = layout.stations.find((item) => item.id === ref.id);
@@ -347,7 +480,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
         if (ref.kind === "rack") {
           const rack = layout.racks.find((item) => item.id === ref.id);
           if (rack?.locked) continue;
-          if (rack) layout = upsertCell(layout, rack.homeCell, "EMPTY");
+          if (rack) layout = clearRackCells(layout, rack);
           layout = { ...layout, racks: layout.racks.filter((item) => item.id !== ref.id) };
         }
         if (ref.kind === "station") {
@@ -391,6 +524,8 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       let layout = state.history.present;
       for (const ref of state.selected) {
         if (ref.kind === "rack") {
+          const current = layout.racks.find((rack) => rack.id === ref.id);
+          if (current && !current.locked) layout = clearRackCells(layout, current);
           layout = {
             ...layout,
             racks: layout.racks.map((rack) =>
@@ -399,6 +534,8 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
                 : rack
             )
           };
+          const rotated = layout.racks.find((rack) => rack.id === ref.id);
+          if (rotated && !rotated.locked) layout = markRackCells(layout, rotated);
         }
         if (ref.kind === "station") {
           const sideOrder: ServiceSide[] = ["NORTH", "EAST", "SOUTH", "WEST"];
@@ -425,7 +562,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
           const rack = layout.racks.find((item) => item.id === ref.id);
           if (rack) {
             const copy = { ...structuredClone(rack), id: makeId("rack"), rackId: `${rack.rackId}_copy`, homeCell: { row: Math.min(layout.grid.rows - 1, rack.homeCell.row + 1), col: Math.min(layout.grid.columns - 1, rack.homeCell.col + 1) } };
-            layout = upsertCell(layout, copy.homeCell, "RACK_STORAGE");
+            layout = markRackCells(layout, copy);
             layout = { ...layout, racks: [...layout.racks, copy] };
             newSelection.push({ kind: "rack", id: copy.id });
           }
@@ -433,7 +570,25 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       }
       return { history: commit(state.history, layout), selected: newSelection, selectedCell: undefined };
     }),
-  updateRack: (id, patch) => set((state) => ({ history: commit(state.history, { ...state.history.present, racks: state.history.present.racks.map((rack) => (rack.id === id ? { ...rack, ...patch } : rack)) }) })),
+  updateRack: (id, patch) =>
+    set((state) => {
+      const current = state.history.present.racks.find((rack) => rack.id === id);
+      if (!current) return {};
+      const nextRack = { ...current, ...patch };
+      const footprintChanged =
+        Boolean(patch.homeCell) ||
+        patch.footprintWidthM !== undefined ||
+        patch.footprintDepthM !== undefined ||
+        patch.currentOrientationDeg !== undefined;
+      let layout = state.history.present;
+      if (footprintChanged) layout = clearRackCells(layout, current);
+      layout = {
+        ...layout,
+        racks: layout.racks.map((rack) => (rack.id === id ? nextRack : rack))
+      };
+      if (footprintChanged) layout = markRackCells(layout, nextRack);
+      return { history: commit(state.history, layout) };
+    }),
   updateStation: (id, patch) =>
     set((state) => {
       let layout = state.history.present;
@@ -495,6 +650,13 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
         })
       };
     }),
+  regenerateRackBins: (id) =>
+    set((state) => ({
+      history: commit(state.history, {
+        ...state.history.present,
+        racks: state.history.present.racks.map((rack) => (rack.id === id ? regenerateRackBinsForRack(rack) : rack))
+      })
+    })),
   updateLayoutMeta: (patch) =>
     set((state) => {
       const next = { ...state.history.present, ...patch };

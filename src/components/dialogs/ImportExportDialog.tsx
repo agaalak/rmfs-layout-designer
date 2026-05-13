@@ -1,4 +1,5 @@
 import type { AnalyticsResult } from "../../analytics/types";
+import { useState } from "react";
 import { exportAnalyticsCsv, exportAnalyticsJson, exportSummaryMarkdown } from "../../importExport/exportAnalytics";
 import { downloadTextFile, exportLayoutJson } from "../../importExport/exportLayout";
 import type { WarehouseLayout } from "../../models/layout";
@@ -15,12 +16,16 @@ interface ImportExportDialogProps {
 
 export function ImportExportDialog({ open, onClose, layout, analytics }: ImportExportDialogProps) {
   const setLayout = useLayoutStore((state) => state.setLayout);
+  const [message, setMessage] = useState("");
   const importFile = (file?: File) => {
     if (!file) return;
-    file.text().then((text) => {
-      setLayout(importLayoutJson(text));
-      onClose();
-    });
+    file.text()
+      .then((text) => {
+        setLayout(importLayoutJson(text));
+        setMessage(`Imported ${file.name}`);
+        onClose();
+      })
+      .catch((error: unknown) => setMessage(error instanceof Error ? error.message : "Import failed"));
   };
   return (
     <DialogShell title="Import / Export" open={open} onClose={onClose}>
@@ -29,6 +34,7 @@ export function ImportExportDialog({ open, onClose, layout, analytics }: ImportE
           Import layout JSON
           <input className="hidden" type="file" accept="application/json" onChange={(event) => importFile(event.target.files?.[0])} />
         </label>
+        {message ? <div className="rounded-md border border-border bg-slate-50 p-2 text-xs text-muted-foreground">{message}</div> : null}
         <div className="grid grid-cols-2 gap-2">
           <button className="toolbar-button" onClick={() => downloadTextFile(`${layout.layoutId}.json`, exportLayoutJson(layout), "application/json")}>
             Export layout JSON

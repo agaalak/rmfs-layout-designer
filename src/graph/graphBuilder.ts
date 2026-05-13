@@ -1,7 +1,9 @@
 import type { Direction, GridCell } from "../models/grid";
 import { allDirections, traversableCellTypes } from "../models/grid";
 import type { WarehouseLayout } from "../models/layout";
+import type { Rack } from "../models/rack";
 import { cellKey, inBounds, neighbor } from "../utils/gridMath";
+import { rackOccupiedCells } from "../utils/rackFootprint";
 
 export type GraphNode = string;
 
@@ -69,6 +71,22 @@ export function objectApproachNodes(layout: WarehouseLayout, cell: GridCell, gra
     }
   }
   return result;
+}
+
+export function rackApproachNodes(layout: WarehouseLayout, rack: Rack, graph: RoadGraph): GraphNode[] {
+  const occupied = rackOccupiedCells(rack, layout.grid);
+  const occupiedKeys = new Set(occupied.map(cellKey));
+  const result = new Set<GraphNode>();
+  for (const cell of occupied) {
+    for (const direction of allDirections) {
+      const candidate = neighbor(cell, direction);
+      const key = cellKey(candidate);
+      if (inBounds(candidate, layout.grid) && !occupiedKeys.has(key) && graph.nodes.has(key)) {
+        result.add(key);
+      }
+    }
+  }
+  return [...result];
 }
 
 export function stationNodes(station: { cell: GridCell; queueCells: GridCell[] }, graph?: RoadGraph): GraphNode[] {

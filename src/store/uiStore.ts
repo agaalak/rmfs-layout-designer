@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { GridCell } from "../models/grid";
 
 export type EditorTool =
   | "select"
@@ -27,7 +28,9 @@ interface UiState {
   showHeatmap: boolean;
   heatmapMode: HeatmapMode;
   zoom: number;
+  hoverCell?: GridCell;
   setTool: (tool: EditorTool) => void;
+  setHoverCell: (cell?: GridCell) => void;
   setZoom: (zoom: number) => void;
   zoomIn: () => void;
   zoomOut: () => void;
@@ -47,7 +50,9 @@ export const useUiStore = create<UiState>((set) => ({
   showHeatmap: false,
   heatmapMode: "distance",
   zoom: 1,
+  hoverCell: undefined,
   setTool: (activeTool) => set({ activeTool }),
+  setHoverCell: (hoverCell) => set({ hoverCell }),
   setZoom: (zoom) => set({ zoom: Math.max(0.3, Math.min(2.5, zoom)) }),
   zoomIn: () => set((state) => ({ zoom: Math.min(2.5, state.zoom + 0.1) })),
   zoomOut: () => set((state) => ({ zoom: Math.max(0.3, state.zoom - 0.1) })),

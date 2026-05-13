@@ -19,12 +19,14 @@ This is not a robot animation tool. It is a visual layout editor plus analytical
 - Export analytics JSON, CSV, Markdown report, PNG, and SVG.
 - Lock manually defined cells/objects so Hybrid generation preserves them.
 - Show graph-distance, congestion, or validation heatmaps on the canvas.
+- Compare generated layout candidates before applying one to the editable canvas.
+- Edit rack bins in a table and import/export rack-bin CSV files.
 
 ## Modes
 
 Mode A, manual, starts with an empty grid. Use the left toolbox to draw roads, rack storage, queues, blocked cells, human zones, and docks, or place racks, stations, chargers, parking, and rotation zones.
 
-Mode B, procedural, opens a generation dialog where you choose the layout family, dimensions, rack fill ratio, aisle spacing, station count, charger count and size, parking count, traffic mode, rotation zone count, and candidate count. The app generates candidate alternatives with lightweight ranking metadata, loads the best candidate onto the canvas, and keeps the result fully editable.
+Mode B, procedural, opens a generation dialog where you choose the layout family, dimensions, rack fill ratio, aisle spacing, station count, charger count and size, parking count, traffic mode, rotation zone count, and candidate count. The app generates alternatives, opens a candidate comparison drawer, lets you sort by score/density/distance/congestion/errors, previews selected candidates on the canvas, and applies the selected candidate as a fully editable layout.
 
 Hybrid mode uses the current layout as fixed constraints. Draw walls, columns, human zones, docks, mandatory aisles, fixed stations, chargers, and parking first, then mark important cells or objects as locked in the property panel. The Hybrid generator fills racks, rack blocks, aisles, queues, rotation zones, and remaining support cells around protected constraints.
 
@@ -35,7 +37,7 @@ Grid cells are defined in meters, for example `1.2 m x 1.2 m` or `1.0 m x 1.0 m`
 - `width = columns * cell width`
 - `depth = rows * cell depth`
 
-In this first version, a rack footprint must fit inside one grid cell. A `1.0 m x 1.0 m` rack in a `1.2 m x 1.2 m` cell is valid. A `1.2 m x 1.2 m` rack in a `1.0 m x 1.0 m` cell is shown as a validation error because multi-cell racks are not implemented yet.
+Rack footprints are converted to occupied grid cells with `ceil(footprint / cell size)`. Supported rack footprints are `1x1`, `1x2`, `2x1`, and `2x2` cells. Rectangular rack footprints rotate with the rack when orientation changes by 90 degrees. Larger footprints are rejected with a validation error.
 
 ## Charging And Parking
 
@@ -52,10 +54,21 @@ The app uses the term rack in code and UI, while also treating racks as RMFS pod
 - Footprint and height
 - Current orientation and allowed orientations
 - Face A and Face B
-- Bin rows, columns, barcode/location patterns, SKU and quantity fields in the data model
+- Bin rows, columns, barcode/location patterns, SKU and quantity fields in the data model and right-side rack bin editor
 - Optional HOT/WARM/COLD demand class
 
-Face A and Face B are visually distinguished on each rack. A rack orientation arrow shows the current orientation.
+Face A and Face B are visually distinguished on each rack by the split rack coloring. A rack orientation arrow shows the current orientation. When a rack is selected, the right panel shows a full editable bin table with regeneration, SKU clearing, location auto-numbering, and rack-bin CSV import/export.
+
+## Candidate Comparison
+
+Mode B candidate generation opens a drawer with each generated candidate's family, rack/station/charger/parking counts, storage density, average and p90 rack-to-station distance, congestion risk, orientation penalty score, overall score, and validation error count.
+
+You can:
+
+- Sort candidates by score, density, distance, congestion risk, or validation errors.
+- Select any candidate to preview it on the canvas.
+- Compare the top three candidates in a compact side panel.
+- Apply the selected candidate and keep editing it manually.
 
 ## Orientation Zones
 
@@ -93,6 +106,12 @@ The toolbar heatmap toggle shows an analytical canvas overlay. The mode selector
 
 These overlays are estimates. They are not robot animation, traffic control, or MAPF simulation.
 
+## Import And Export
+
+Exported layout JSON includes `layoutSchemaVersion`, `appVersion`, timestamps, grid settings, cells, objects, rack faces/bins, assumptions, scoring weights, and metadata. The current schema is `0.2.0`.
+
+Import handles older layouts without a schema version by applying migration defaults. Invalid JSON returns a clear import error instead of crashing the app.
+
 ## Validation
 
 The validation panel shows error/warning severity, messages, and involved row/column when available. Clicking a validation item selects the related object or cell on the canvas. Validation covers grid dimensions, physical dimensions, rack footprint, charger size, parking size, overlaps, reachability, orientation compatibility, and face access.
@@ -125,6 +144,8 @@ npm run build
 - Toolbar buttons: undo, redo, zoom, fit, toggle grid, labels, arrows, and heatmap.
 - Traffic tool: select a cell and edit allowed directions in the property panel.
 - Locking: select a cell or object and use the Locked checkbox in the property panel before Hybrid generation.
+- Keyboard shortcuts button: opens an in-app shortcut reference.
+- Status bar: shows selected tool, selected object/cell, hovered row/column, zoom, unsaved changes, and validation error count.
 
 ## Limitations
 
@@ -132,8 +153,8 @@ npm run build
 - No MAPF traffic simulation yet.
 - No collision avoidance model.
 - Analytics are estimates, not discrete-event simulation.
-- Multi-cell rack footprints are rejected in the first version.
-- Flying-V is represented as a future-ready placeholder, not a true diagonal aisle graph.
+- Multi-cell rack support is limited to up to `2x2` occupied cells.
+- Flying-V is a first-pass stair-step diagonal aisle generator, not a CAD-grade continuous diagonal geometry model.
 
 ## Roadmap
 
