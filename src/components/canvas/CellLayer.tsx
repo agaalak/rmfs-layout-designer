@@ -1,4 +1,4 @@
-import { Layer, Rect } from "react-konva";
+import { Group, Rect } from "react-konva";
 import type { LayoutCell } from "../../models/grid";
 import { cellKey } from "../../utils/gridMath";
 
@@ -24,7 +24,7 @@ interface CellLayerProps {
 
 export function CellLayer({ cells, cellSize, issueCells }: CellLayerProps) {
   return (
-    <Layer>
+    <Group>
       {cells.map((cell) => {
         const key = cellKey(cell);
         return (
@@ -43,6 +43,6 @@ export function CellLayer({ cells, cellSize, issueCells }: CellLayerProps) {
           />
         );
       })}
-    </Layer>
+    </Group>
   );
 }

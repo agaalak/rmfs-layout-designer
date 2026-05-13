@@ -4,7 +4,7 @@
 
 RMFS means Robotic Mobile Fulfillment System: a shelf-to-person or pod-to-picker system where robots carry mobile racks or pods between storage areas and workstations. This app helps design the warehouse layout before building a robot movement simulator.
 
-This is not a robot animation tool. It is a visual layout editor plus analytical validation and estimates.
+This is not the final 3D robot simulator. It is a visual layout editor plus analytical validation, estimates, and a first 2D time-based robot simulation foundation.
 
 ## What The App Does
 
@@ -21,6 +21,7 @@ This is not a robot animation tool. It is a visual layout editor plus analytical
 - Show graph-distance, congestion, or validation heatmaps on the canvas.
 - Compare generated layout candidates before applying one to the editable canvas.
 - Edit rack bins in a table and import/export rack-bin CSV files.
+- Switch to Simulation Mode, initialize robots, generate rack-to-station tasks, play/pause/step a 2D top-down simulation, and export simulation metrics/logs.
 
 ## Modes
 
@@ -83,7 +84,7 @@ The app estimates:
 - Estimated rotation time penalty
 - Invalid orientation and face-access cases
 
-No visual robot movement or animated rack rotation is simulated.
+Design-mode analytics estimate orientation effects without animated rack rotation. Simulation Mode can route carried racks through compatible rotation zones, but full rack-rotation timing/control is still a future MAPF-level refinement.
 
 ## Analytics
 
@@ -105,6 +106,26 @@ The toolbar heatmap toggle shows an analytical canvas overlay. The mode selector
 - Validation: cells involved in validation findings.
 
 These overlays are estimates. They are not robot animation, traffic control, or MAPF simulation.
+
+## 2D Simulation Mode
+
+Simulation Mode adds a time-based top-down playback layer on the current layout. Use the Design/Simulate toggle in the toolbar. In Simulation Mode, layout editing tools are disabled so the road graph, racks, stations, chargers, parking, and blocked cells stay stable while robots are running.
+
+The simulation panel can:
+
+- Initialize robots from parking spots first, charging spots second, then perimeter road cells if needed.
+- Configure robot count, loaded/unloaded speed, lift/drop time, station service time, reservation time step, task count, and task generation mode.
+- Generate random nearest-station tasks or HOT/WARM/COLD weighted tasks.
+- Create a manual rack-to-station task from selected rack/station dropdowns.
+- Play, pause, step, reset, and choose speed multipliers from `0.25x` through `10x`.
+- Toggle robot labels, planned paths, reservation overlays, and collision checking.
+- Show live simulation time, active/completed/failed task counts, blocked robots, throughput estimate, cycle time, robot utilization, and station utilization.
+- Filter an event log by robot, task, message, or severity.
+- Export simulation config JSON, event log CSV, and metrics CSV.
+
+Robots follow shortest paths over the layout graph instead of driving straight through racks or walls. The planner respects one-way/two-way traffic rules, avoids blocked cells, uses adjacent rack approach cells for pickup/dropoff, and routes toward station queue/service cells. A basic time-expanded reservation table prevents obvious same-cell and edge-swap conflicts by inserting wait steps when possible.
+
+This is intentionally not full MAPF. There is no CBS, WHCA*, global deadlock proof, or continuous collision envelope solver yet. The current traffic layer is practical for early layout playback and debugging, while the roadmap remains full MAPF and 3D/RTS-style simulation.
 
 ## Import And Export
 
@@ -149,10 +170,10 @@ npm run build
 
 ## Limitations
 
-- No animated robot simulation yet.
-- No MAPF traffic simulation yet.
-- No collision avoidance model.
-- Analytics are estimates, not discrete-event simulation.
+- 2D simulation is a foundation, not the final 3D simulator.
+- No full CBS/WHCA*/MAPF planner yet.
+- Reservation-based collision avoidance handles obvious vertex and edge-swap conflicts, but it is not a complete deadlock-free traffic controller.
+- Analytics remain estimates; simulation metrics are early operational approximations.
 - Multi-cell rack support is limited to up to `2x2` occupied cells.
 - Flying-V is a first-pass stair-step diagonal aisle generator, not a CAD-grade continuous diagonal geometry model.
 
@@ -162,6 +183,7 @@ npm run build
 - RTS-style robot simulation
 - MAPF planner
 - Collision avoidance
+- Battery/charging policies and richer station service models
 - DXF/CAD import
 - Cloud save/load
 

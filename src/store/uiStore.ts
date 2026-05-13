@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { GridCell } from "../models/grid";
+import type { AppMode } from "../models/simulation";
 
 export type EditorTool =
   | "select"
@@ -22,6 +23,7 @@ export type HeatmapMode = "distance" | "congestion" | "unreachable";
 
 interface UiState {
   activeTool: EditorTool;
+  appMode: AppMode;
   showGrid: boolean;
   showLabels: boolean;
   showDirectionArrows: boolean;
@@ -30,6 +32,7 @@ interface UiState {
   zoom: number;
   hoverCell?: GridCell;
   setTool: (tool: EditorTool) => void;
+  setAppMode: (mode: AppMode) => void;
   setHoverCell: (cell?: GridCell) => void;
   setZoom: (zoom: number) => void;
   zoomIn: () => void;
@@ -44,6 +47,7 @@ interface UiState {
 
 export const useUiStore = create<UiState>((set) => ({
   activeTool: "select",
+  appMode: "design",
   showGrid: true,
   showLabels: true,
   showDirectionArrows: true,
@@ -52,6 +56,7 @@ export const useUiStore = create<UiState>((set) => ({
   zoom: 1,
   hoverCell: undefined,
   setTool: (activeTool) => set({ activeTool }),
+  setAppMode: (appMode) => set({ appMode, activeTool: appMode === "simulation" ? "select" : "select" }),
   setHoverCell: (hoverCell) => set({ hoverCell }),
   setZoom: (zoom) => set({ zoom: Math.max(0.3, Math.min(2.5, zoom)) }),
   zoomIn: () => set((state) => ({ zoom: Math.min(2.5, state.zoom + 0.1) })),

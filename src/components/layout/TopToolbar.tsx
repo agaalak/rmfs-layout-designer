@@ -54,7 +54,9 @@ export function TopToolbar({ layout, analytics, onNew, onGenerate, onHybrid, onI
     toggleDirectionArrows,
     toggleHeatmap,
     heatmapMode,
-    setHeatmapMode
+    setHeatmapMode,
+    appMode,
+    setAppMode
   } = useUiStore();
 
   const importFile = (file?: File) => {
@@ -114,6 +116,14 @@ export function TopToolbar({ layout, analytics, onNew, onGenerate, onHybrid, onI
         <button className="toolbar-button" onClick={onImportExport}>
           <FileInput data-icon="inline-start" /> Import/export
         </button>
+        <div className="flex rounded-md border border-border bg-slate-100 p-0.5">
+          <button className={`toolbar-button h-8 ${appMode === "design" ? "bg-white shadow-sm" : ""}`} onClick={() => setAppMode("design")}>
+            Design
+          </button>
+          <button className={`toolbar-button h-8 ${appMode === "simulation" ? "bg-white shadow-sm" : ""}`} onClick={() => setAppMode("simulation")}>
+            Simulate
+          </button>
+        </div>
         <button className="toolbar-button" onClick={onGenerate}>
           <Hammer data-icon="inline-start" /> Generate Mode B
         </button>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { runAnalytics } from "../../analytics/runAnalytics";
 import { validateLayout } from "../../validation/validateLayout";
 import type { ValidationIssue } from "../../validation/validateObjects";
@@ -12,11 +12,13 @@ import { KeyboardShortcutsDialog } from "../dialogs/KeyboardShortcutsDialog";
 import { NewLayoutDialog } from "../dialogs/NewLayoutDialog";
 import { ProceduralGeneratorDialog } from "../dialogs/ProceduralGeneratorDialog";
 import { CandidateComparisonDrawer } from "../panels/CandidateComparisonDrawer";
+import { SimulationPanel } from "../panels/SimulationPanel";
 import { BottomAnalyticsPanel } from "./BottomAnalyticsPanel";
 import { LeftToolbox } from "./LeftToolbox";
 import { RightPropertiesPanel } from "./RightPropertiesPanel";
 import { TopToolbar } from "./TopToolbar";
 import { useUiStore } from "../../store/uiStore";
+import { useSimulationStore } from "../../store/simulationStore";
 
 export function AppShell() {
   const layout = useCurrentLayout();
@@ -37,9 +39,16 @@ export function AppShell() {
   const selected = useLayoutStore((state) => state.selected);
   const selectedCell = useLayoutStore((state) => state.selectedCell);
   const history = useLayoutStore((state) => state.history);
-  const { activeTool, hoverCell, zoom } = useUiStore();
+  const { activeTool, appMode, hoverCell, zoom } = useUiStore();
+  const simulationState = useSimulationStore((state) => state.state);
+  const simulationStep = useSimulationStore((state) => state.step);
   const validation = useMemo(() => validateLayout(layout), [layout]);
   const analytics = useMemo(() => runAnalytics(layout), [layout]);
+  useEffect(() => {
+    if (appMode !== "simulation" || !simulationState.isRunning) return;
+    const timer = window.setInterval(() => simulationStep(layout, 0.2), 200);
+    return () => window.clearInterval(timer);
+  }, [appMode, layout, simulationState.isRunning, simulationStep]);
   const selectIssue = (issue: ValidationIssue) => {
     if (issue.objectId) {
       const ref: SelectedObjectRef | undefined =
@@ -80,7 +89,7 @@ export function AppShell() {
       <div className="flex items-center justify-between gap-3 border-b border-border bg-slate-50 px-3 py-1 text-xs text-muted-foreground">
         <span>{statusMessage}</span>
         <span className="min-w-max">
-          {history.past.length > 0 ? "Unsaved changes" : "Saved baseline"} | Tool: {activeTool} | Selected: {selected[0]?.id ?? (selectedCell ? `cell ${selectedCell.row},${selectedCell.col}` : "none")} | Hover: {hoverCell ? `${hoverCell.row},${hoverCell.col}` : "none"} | Zoom {(zoom * 100).toFixed(0)}% | Validation errors {validation.issues.filter((issue) => issue.severity === "error").length}
+          Mode: {appMode} | {history.past.length > 0 ? "Unsaved changes" : "Saved baseline"} | Tool: {activeTool} | Selected: {selected[0]?.id ?? (selectedCell ? `cell ${selectedCell.row},${selectedCell.col}` : "none")} | Hover: {hoverCell ? `${hoverCell.row},${hoverCell.col}` : "none"} | Zoom {(zoom * 100).toFixed(0)}% | Validation errors {validation.issues.filter((issue) => issue.severity === "error").length}
         </span>
       </div>
       <div className="flex min-h-0 flex-1">
@@ -101,7 +110,11 @@ export function AppShell() {
             onClose={closeCandidateComparison}
           />
         </main>
-        <RightPropertiesPanel validation={validation} analytics={analytics} onSelectIssue={selectIssue} />
+        {appMode === "simulation" ? (
+          <SimulationPanel layout={layout} />
+        ) : (
+          <RightPropertiesPanel validation={validation} analytics={analytics} onSelectIssue={selectIssue} />
+        )}
       </div>
       <div className="overflow-x-auto">
         <BottomAnalyticsPanel analytics={analytics} validation={validation} />

@@ -1,4 +1,4 @@
-import { Layer, Rect } from "react-konva";
+import { Group, Rect } from "react-konva";
 
 interface SelectionLayerProps {
   rect?: { x: number; y: number; width: number; height: number };
@@ -7,7 +7,7 @@ interface SelectionLayerProps {
 export function SelectionLayer({ rect }: SelectionLayerProps) {
   if (!rect) return null;
   return (
-    <Layer listening={false}>
+    <Group listening={false}>
       <Rect
         x={rect.x}
         y={rect.y}
@@ -18,6 +18,6 @@ export function SelectionLayer({ rect }: SelectionLayerProps) {
         strokeWidth={1}
         dash={[4, 4]}
       />
-    </Layer>
+    </Group>
   );
 }

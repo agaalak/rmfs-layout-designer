@@ -1,4 +1,4 @@
-import { Layer, Rect } from "react-konva";
+import { Group, Rect } from "react-konva";
 import type { AnalyticsResult } from "../../analytics/types";
 import { buildRoadGraph, objectApproachNodes, stationNodes } from "../../graph/graphBuilder";
 import { dijkstraFromSources, reverseGraph } from "../../graph/shortestPath";
@@ -62,5 +62,5 @@ export function HeatmapLayer({ layout, analytics, validation, cellSize, visible,
   if (cells.every((cell) => cell === null)) {
     return null;
   }
-  return <Layer listening={false}>{cells}</Layer>;
+  return <Group listening={false}>{cells}</Group>;
 }

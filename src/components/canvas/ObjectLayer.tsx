@@ -1,4 +1,4 @@
-import { Arrow, Circle, Group, Layer, Rect, Text } from "react-konva";
+import { Arrow, Circle, Group, Rect, Text } from "react-konva";
 import type { WarehouseLayout, SelectedObjectRef } from "../../models/layout";
 import type { ValidationResult } from "../../validation/validateLayout";
 import { cellToPoint, orientationToVector } from "../../utils/geometry";
@@ -12,6 +12,8 @@ interface ObjectLayerProps {
   showLabels: boolean;
   onSelect: (ref: SelectedObjectRef, additive: boolean) => void;
   onMove: (ref: SelectedObjectRef, row: number, col: number) => void;
+  hiddenRackIds?: Set<string>;
+  draggableObjects?: boolean;
 }
 
 function isSelected(selected: SelectedObjectRef[], kind: SelectedObjectRef["kind"], id: string) {
@@ -29,10 +31,11 @@ function shortNumericLabel(value: string) {
   return match ? match[1] : value.replace(/^[^_]+_?/, "").slice(0, 4);
 }
 
-export function ObjectLayer({ layout, selected, validation, cellSize, showLabels, onSelect, onMove }: ObjectLayerProps) {
+export function ObjectLayer({ layout, selected, validation, cellSize, showLabels, onSelect, onMove, hiddenRackIds = new Set(), draggableObjects = true }: ObjectLayerProps) {
   return (
-    <Layer>
+    <Group>
       {layout.racks.map((rack) => {
+        if (hiddenRackIds.has(rack.id)) return null;
         const point = cellToPoint(rack.homeCell, cellSize);
         const selectedRack = isSelected(selected, "rack", rack.id);
         const [dx, dy] = orientationToVector(rack.currentOrientationDeg);
@@ -44,7 +47,7 @@ export function ObjectLayer({ layout, selected, validation, cellSize, showLabels
             key={rack.id}
             x={point.x}
             y={point.y}
-            draggable
+            draggable={draggableObjects}
             onClick={(event) => {
               event.cancelBubble = true;
               onSelect({ kind: "rack", id: rack.id }, event.evt.shiftKey);
@@ -88,7 +91,7 @@ export function ObjectLayer({ layout, selected, validation, cellSize, showLabels
             key={station.id}
             x={point.x}
             y={point.y}
-            draggable
+            draggable={draggableObjects}
             onClick={(event) => {
               event.cancelBubble = true;
               onSelect({ kind: "station", id: station.id }, event.evt.shiftKey);
@@ -131,7 +134,7 @@ export function ObjectLayer({ layout, selected, validation, cellSize, showLabels
             key={charger.id}
             x={point.x}
             y={point.y}
-            draggable
+            draggable={draggableObjects}
             onClick={(event) => {
               event.cancelBubble = true;
               onSelect({ kind: "charger", id: charger.id }, event.evt.shiftKey);
@@ -165,7 +168,7 @@ export function ObjectLayer({ layout, selected, validation, cellSize, showLabels
             key={parking.id}
             x={point.x}
             y={point.y}
-            draggable
+            draggable={draggableObjects}
             onClick={(event) => {
               event.cancelBubble = true;
               onSelect({ kind: "parking", id: parking.id }, event.evt.shiftKey);
@@ -199,7 +202,7 @@ export function ObjectLayer({ layout, selected, validation, cellSize, showLabels
             key={zone.id}
             x={point.x}
             y={point.y}
-            draggable
+            draggable={draggableObjects}
             onClick={(event) => {
               event.cancelBubble = true;
               onSelect({ kind: "rotation", id: zone.id }, event.evt.shiftKey);
@@ -226,6 +229,6 @@ export function ObjectLayer({ layout, selected, validation, cellSize, showLabels
           </Group>
         );
       })}
-    </Layer>
+    </Group>
   );
 }

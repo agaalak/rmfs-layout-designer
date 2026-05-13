@@ -37,7 +37,8 @@ const tools: Array<{ id: EditorTool; label: string; icon: typeof MousePointer2 }
 ];
 
 export function LeftToolbox() {
-  const { activeTool, setTool } = useUiStore();
+  const { activeTool, appMode, setTool } = useUiStore();
+  const disabled = appMode === "simulation";
   return (
     <aside className="hidden w-56 shrink-0 flex-col gap-3 border-r border-border bg-panel p-3 md:flex">
       <div>
@@ -48,7 +49,8 @@ export function LeftToolbox() {
             return (
               <button
                 key={tool.id}
-                className={cn("tool-button", activeTool === tool.id && "tool-button-active")}
+                className={cn("tool-button", activeTool === tool.id && "tool-button-active", disabled && tool.id !== "select" && tool.id !== "pan" && "opacity-45")}
+                disabled={disabled && tool.id !== "select" && tool.id !== "pan"}
                 onClick={() => setTool(tool.id)}
               >
                 <Icon data-icon="inline-start" />
@@ -59,7 +61,9 @@ export function LeftToolbox() {
         </div>
       </div>
       <div className="rounded-md border border-border bg-slate-50 p-2 text-xs text-muted-foreground">
-        Drag objects to move. Shift-click or drag a rectangle to multi-select. Press R to rotate, Delete to remove, Ctrl+C/Ctrl+V to copy racks.
+        {disabled
+          ? "Simulation Mode locks layout editing. Use the simulation panel to initialize robots, create tasks, and control playback."
+          : "Drag objects to move. Shift-click or drag a rectangle to multi-select. Press R to rotate, Delete to remove, Ctrl+C/Ctrl+V to copy racks."}
       </div>
     </aside>
   );

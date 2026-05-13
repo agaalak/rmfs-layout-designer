@@ -23,6 +23,16 @@
 - Status bar with selected tool/object/cell, hover row/column, zoom, validation error count, and unsaved changes indicator.
 - Keyboard shortcut help dialog, clear-layout confirmation, and load-demo dirty-layout confirmation.
 - Default demo layout on first load and a toolbar Load Demo action.
+- Design/Simulation mode toggle that locks normal editing during simulator playback.
+- 2D simulation data models for robots, tasks, route plans, station queues, reservation snapshots, event logs, and metrics.
+- Robot initialization from parking spots first, chargers second, then perimeter road fallback cells.
+- Random nearest-station, HOT/WARM/COLD weighted, and manual rack-to-station task creation.
+- Shortest-path simulation planning over the existing layout graph with one-way traffic, blocked-cell avoidance, rack approach-cell logic, station queue/service routing, rotation-zone detours, and return paths.
+- Basic time-expanded reservation table that prevents same-cell and edge-swap conflicts and can insert wait steps.
+- Step-based simulation engine with smooth robot pose interpolation, loaded/unloaded speeds, lift/drop/service timing, station FIFO queues, rack carry/drop behavior, task completion, metrics, and event logging.
+- Canvas simulation layers for robots, yaw arrows, carried racks, planned paths, reservation overlays, and station queue occupancy.
+- Simulation control panel with initialize, generate tasks, create manual task, play/pause/step/reset, speed multiplier, display toggles, settings, event filters, and simulation config/log/metrics exports.
+- Versioned layout model support for optional simulation config.
 - README explaining RMFS concepts, modes, analytics, validation, import/export, limitations, and roadmap.
 
 ## Partially Implemented
@@ -32,11 +42,15 @@
 - Congestion analytics are a shortest-path proxy over a rack sample, not a traffic simulation or MAPF model.
 - Heatmaps are analytical overlays but not yet a full multi-layer GIS-style explorer.
 - SVG export captures layout cells and core layout coloring; PNG captures the current rendered canvas.
+- Simulation reservation handling is useful for early playback, but it is not a complete MAPF solver and does not prove deadlock freedom.
+- Rack rotation-zone routing is modeled in route planning; explicit animated rack rotation dwell/control remains a later refinement.
+- Loaded-robot reservations currently focus on robot cell conflicts; full carried-rack swept-envelope reservation is still future work.
 
 ## Missing Features
 
 - CAD/DXF import.
-- MAPF path planning, traffic control, robot collision avoidance, or animated robot simulation.
+- Full MAPF path planning, CBS/WHCA*, advanced fleet traffic control, and deadlock recovery.
+- 3D/RTS-style robot simulator.
 - Cloud persistence.
 
 ## Broken Features Fixed In This Pass
@@ -52,17 +66,21 @@
 - Rack footprint validation no longer rejects all oversized racks; it supports up to 2x2 occupied cells and rejects larger footprints.
 - Rack bin duplicate barcode/location, negative quantity, and over-max quantity validation now exists.
 - Import/export now includes schema version `0.2.0`, app version, timestamps, and migration warnings.
+- The simulator pass added a real Simulation Mode instead of leaving robot movement as roadmap-only text.
+- Konva simulator overlays are grouped into a small number of canvas layers, removing fresh layer-count warnings during browser QA.
+- Simulation config import/export now validates JSON and reports friendly errors.
 
 ## Test Status
 
 - `npm install`: passed, 0 vulnerabilities.
-- `npm test -- --run`: 8 files passed, 28 tests passed.
 - `npm run build`: passed. Vite still reports the expected large single-bundle warning.
+- `npm test -- --run`: 9 files passed, 45 tests passed.
+- Browser QA at `http://127.0.0.1:5174/`: passed for app load, demo layout, Simulation Mode, initialize robots, generate tasks, step, play/pause, metrics/event log updates, and fresh console health.
 
 ## Completion Plan
 
 1. Keep the current React/Konva/Zustand architecture.
-2. Add deeper browser-level canvas QA once the screenshot timeout in the in-app browser is resolved.
-3. Improve candidate previews with thumbnail mini-maps.
-4. Add virtualized bin tables for very large rack configurations.
-5. Continue toward CAD/DXF import, 3D view, and simulator/MAPF work in later passes.
+2. Improve candidate previews with thumbnail mini-maps.
+3. Add virtualized bin tables for very large rack configurations.
+4. Deepen the simulator with explicit rack-rotation dwell events, richer charging/battery policies, and better deadlock recovery.
+5. Continue toward full MAPF, CAD/DXF import, 3D view, and cloud persistence in later passes.

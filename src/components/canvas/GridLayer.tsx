@@ -1,4 +1,4 @@
-import { Layer, Line } from "react-konva";
+import { Group, Line } from "react-konva";
 import type { GridConfig } from "../../models/grid";
 
 interface GridLayerProps {
@@ -22,5 +22,5 @@ export function GridLayer({ grid, cellSize, visible }: GridLayerProps) {
       <Line key={`h-${row}`} points={[0, row * cellSize, width, row * cellSize]} stroke="#e5e7eb" strokeWidth={1} />
     );
   }
-  return <Layer listening={false}>{lines}</Layer>;
+  return <Group listening={false}>{lines}</Group>;
 }

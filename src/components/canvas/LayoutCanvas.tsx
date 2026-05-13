@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Stage } from "react-konva";
+import { Layer, Stage } from "react-konva";
 import type Konva from "konva";
 import type { CellType, GridCell } from "../../models/grid";
 import type { AnalyticsResult } from "../../analytics/types";
 import type { ValidationResult } from "../../validation/validateLayout";
 import { useCurrentLayout, useLayoutStore } from "../../store/layoutStore";
 import { useUiStore } from "../../store/uiStore";
+import { useSimulationStore } from "../../store/simulationStore";
 import { pointToCell } from "../../utils/geometry";
 import { cellKey, inBounds, rectCells } from "../../utils/gridMath";
 import { rackOccupiedCells } from "../../utils/rackFootprint";
@@ -15,7 +16,11 @@ import { DirectionArrowLayer } from "./DirectionArrowLayer";
 import { GridLayer } from "./GridLayer";
 import { HeatmapLayer } from "./HeatmapLayer";
 import { ObjectLayer } from "./ObjectLayer";
+import { PathLayer } from "./PathLayer";
+import { ReservationLayer } from "./ReservationLayer";
+import { RobotLayer } from "./RobotLayer";
 import { SelectionLayer } from "./SelectionLayer";
+import { SimulationOverlayLayer } from "./SimulationOverlayLayer";
 
 interface LayoutCanvasProps {
   validation: ValidationResult;
@@ -53,7 +58,9 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
     copySelected,
     pasteClipboard
   } = useLayoutStore();
-  const { activeTool, zoom, showGrid, showLabels, showDirectionArrows, showHeatmap, heatmapMode, hoverCell, setHoverCell } = useUiStore();
+  const { activeTool, appMode, zoom, showGrid, showLabels, showDirectionArrows, showHeatmap, heatmapMode, hoverCell, setHoverCell } = useUiStore();
+  const simulation = useSimulationStore((state) => state.state);
+  const simulationConfig = useSimulationStore((state) => state.config);
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
   const isPaintingRef = useRef(false);
@@ -63,6 +70,7 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
   const [selectionStart, setSelectionStart] = useState<GridCell | undefined>();
   const [selectionEnd, setSelectionEnd] = useState<GridCell | undefined>();
   const cellSize = 22;
+  const designLocked = appMode === "simulation";
   const gridPixelWidth = layout.grid.columns * cellSize * zoom;
   const gridPixelHeight = layout.grid.rows * cellSize * zoom;
   const width = Math.max(320, containerSize.width);
@@ -184,6 +192,10 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
         onMouseDown={(event) => {
           const cell = pointerCell();
           if (!cell) return;
+          if (designLocked) {
+            selectCell(cell);
+            return;
+          }
           if (activeTool === "traffic") {
             selectCell(cell);
           } else if (activeTool === "select" && event.target === event.target.getStage()) {
@@ -203,7 +215,7 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
         onMouseMove={() => {
           const cell = pointerCell();
           setHoverCell(cell);
-          if (isPaintingRef.current && isPaintTool && cell) paintCell(cell);
+          if (!designLocked && isPaintingRef.current && isPaintTool && cell) paintCell(cell);
           if (selectionStart && cell) setSelectionEnd(cell);
         }}
         onMouseUp={() => {
@@ -229,20 +241,36 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
           setHoverCell(undefined);
         }}
       >
-        <CellLayer cells={layout.cells} cellSize={cellSize} issueCells={validation.issueCells} />
-        <HeatmapLayer layout={layout} analytics={analytics} validation={validation} cellSize={cellSize} visible={showHeatmap} mode={heatmapMode} />
-        <GridLayer grid={layout.grid} cellSize={cellSize} visible={showGrid} />
-        <DirectionArrowLayer layout={layout} cellSize={cellSize} visible={showDirectionArrows} />
-        <ObjectLayer
-          layout={layout}
-          selected={selected}
-          validation={validation}
-          cellSize={cellSize}
-          showLabels={showLabels}
-          onSelect={selectObject}
-          onMove={(ref, row, col) => moveObject(ref, { row, col })}
-        />
-        <SelectionLayer rect={selectionRect ?? selectedCellRect} />
+        <Layer>
+          <CellLayer cells={layout.cells} cellSize={cellSize} issueCells={validation.issueCells} />
+          <HeatmapLayer layout={layout} analytics={analytics} validation={validation} cellSize={cellSize} visible={showHeatmap} mode={heatmapMode} />
+          <GridLayer grid={layout.grid} cellSize={cellSize} visible={showGrid} />
+          <DirectionArrowLayer layout={layout} cellSize={cellSize} visible={showDirectionArrows} />
+        </Layer>
+        <Layer>
+          <ObjectLayer
+            layout={layout}
+            selected={selected}
+            validation={validation}
+            cellSize={cellSize}
+            showLabels={showLabels}
+            onSelect={selectObject}
+            onMove={(ref, row, col) => moveObject(ref, { row, col })}
+            hiddenRackIds={new Set(simulation.robots.map((robot) => robot.carryingRackId).filter(Boolean) as string[])}
+            draggableObjects={!designLocked}
+          />
+        </Layer>
+        {appMode === "simulation" ? (
+          <Layer>
+            <ReservationLayer simulation={simulation} cellSize={cellSize} visible={appMode === "simulation" && simulationConfig.showReservations} />
+            <PathLayer simulation={simulation} cellSize={cellSize} visible={simulationConfig.showPaths} />
+            <RobotLayer layout={layout} simulation={simulation} cellSize={cellSize} showLabels={simulationConfig.showRobotLabels} />
+            <SimulationOverlayLayer layout={layout} simulation={simulation} cellSize={cellSize} />
+          </Layer>
+        ) : null}
+        <Layer>
+          <SelectionLayer rect={selectionRect ?? selectedCellRect} />
+        </Layer>
       </Stage>
       <div className="absolute bottom-3 left-3 rounded-md border border-border bg-white/90 px-2 py-1 text-xs text-muted-foreground shadow-panel">
         {layout.grid.rows} x {layout.grid.columns} grid - {layout.grid.cellWidthM} m cells - zoom {(zoom * 100).toFixed(0)}%

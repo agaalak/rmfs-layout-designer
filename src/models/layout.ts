@@ -5,6 +5,7 @@ import type { Rack } from "./rack";
 import type { RotationZone } from "./rotation";
 import type { Station } from "./station";
 import type { TrafficRule } from "./traffic";
+import type { SimulationConfig } from "./simulation";
 
 export interface RobotAssumptions {
   robotCount: number;
@@ -70,6 +71,7 @@ export interface WarehouseLayout {
   robotAssumptions: RobotAssumptions;
   demandAssumptions: DemandAssumptions;
   scoringWeights: ScoringWeights;
+  simulationConfig?: SimulationConfig;
   metadata: Record<string, unknown>;
 }
 

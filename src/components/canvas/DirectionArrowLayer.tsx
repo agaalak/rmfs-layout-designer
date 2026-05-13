@@ -1,4 +1,4 @@
-import { Arrow, Layer } from "react-konva";
+import { Arrow, Group } from "react-konva";
 import type { WarehouseLayout } from "../../models/layout";
 import { allDirections, traversableCellTypes } from "../../models/grid";
 
@@ -18,7 +18,7 @@ const vector = {
 export function DirectionArrowLayer({ layout, cellSize, visible }: DirectionArrowLayerProps) {
   if (!visible) return null;
   return (
-    <Layer listening={false}>
+    <Group listening={false}>
       {layout.cells
         .filter((cell) => traversableCellTypes.has(cell.cellType) && (cell.allowedDirections ?? allDirections).length < allDirections.length)
         .flatMap((cell) =>
@@ -40,6 +40,6 @@ export function DirectionArrowLayer({ layout, cellSize, visible }: DirectionArro
             );
           })
         )}
-    </Layer>
+    </Group>
   );
 }
