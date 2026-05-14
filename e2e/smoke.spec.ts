@@ -13,7 +13,7 @@ test("@smoke app loads with the workflow rail and canvas", async ({ page }) => {
   await expect(page.getByTestId("layout-canvas")).toBeVisible();
 });
 
-test.skip("@smoke workflow navigation exposes contextual panels", async ({ page }) => {
+test("@smoke workflow navigation exposes contextual panels", async ({ page }) => {
   await page.getByRole("button", { name: /Generate workflow/ }).click();
   await expect(page.getByText("Procedural and hybrid layouts")).toBeVisible();
   await page.getByRole("button", { name: /Analyze workflow/ }).click();
@@ -22,7 +22,7 @@ test.skip("@smoke workflow navigation exposes contextual panels", async ({ page 
   await expect(page.getByText("Import, export, and reports")).toBeVisible();
 });
 
-test.skip("@smoke small viewport uses responsive drawers", async ({ page }) => {
+test("@smoke small viewport uses responsive drawers", async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 720 });
   await expect(page.getByText(/For best layout editing/)).toBeVisible();
   await page.getByRole("button", { name: "Open Design tools" }).click();

@@ -21,6 +21,8 @@ This is not the final 3D robot simulator, and it is not a full RAWSim-O replacem
 - Show graph-distance, congestion, or validation heatmaps on the canvas.
 - Compare generated layout candidates before applying one to the editable canvas.
 - Edit rack bins in a table and import/export rack-bin CSV files.
+- Start from a compact Small Demo by default, with a larger stress demo still available from the Design toolbar.
+- Use always-visible canvas controls for fit, reset, zoom, grid, labels, arrows, and heatmap from any workflow.
 - Switch to Experimental Simulation Mode, initialize robots, generate inventory-backed sample orders, select racks/stations/robots through simple controllers, play/pause/step a 2D top-down simulation, and export simulation metrics/logs/orders/inventory.
 
 ## Workflow-Oriented UI
@@ -36,6 +38,12 @@ The main UI is organized by workflow instead of one overloaded toolbar:
 The header shows the current layout, workflow, unsaved state, and a primary contextual action. The left workflow rail switches between workflows; the left toolbox appears for Design and is grouped into Navigation, Draw Cells, Place Resources, and Traffic.
 
 On screens below the desktop editing breakpoint, the Design toolbox and workflow side panels open as responsive drawers from the bottom of the screen. The canvas remains visible, and the header warns that larger screens are recommended for serious layout editing.
+
+## Demo Presets
+
+The first load uses **Small Demo**, a compact `22 x 30` RMFS layout with connected roads, racks, 3 stations, 2 chargers, 4 parking spots, rotation zones, sample rack-bin inventory, and simulation defaults for a small robot/task count.
+
+The previous large `40 x 60` style layout remains available as **Large Demo** for stress and visual-density checks. Use the Design toolbar or the quick-start panel to switch demos.
 
 ## Modes
 
@@ -133,6 +141,8 @@ Simulation Mode is Experimental. It adds a time-based top-down playback layer on
 The simulation panel can:
 
 - Initialize robots from parking spots first, charging spots second, then perimeter road cells if needed.
+- Show a Readiness card for layout, inventory, station, storage, and simulation setup.
+- Populate rack-bin sample inventory, refresh the inventory snapshot, generate sample orders from available inventory, clear generated orders/inventory, and auto-fix common inventory/order readiness gaps.
 - Configure robot count, loaded/unloaded speed, lift/drop time, station service time, reservation time step, task count, and task generation mode.
 - Generate sample customer orders from current SKU inventory.
 - Select racks by nearest rack with SKU, most inventory for SKU, or HOT/WARM/COLD preference.
@@ -148,7 +158,7 @@ The simulation panel can:
 
 Robots follow shortest paths over the layout graph instead of driving straight through racks or walls. The planner respects one-way/two-way traffic rules, avoids blocked cells, uses adjacent rack approach cells for pickup/dropoff, and routes toward station queue/service cells. A practical time-expanded reservation table prevents obvious same-cell, edge-swap, loaded-envelope, and simple resource-capacity conflicts by inserting wait steps when possible.
 
-Traffic control now includes carried-rack envelopes for `1x1`, `1x2`, `2x1`, and `2x2` racks, simple capacity reservations for rotation zones and queue/service resources, conservative deadlock detection, and a deterministic scenario runner for regression tests. It remains a practical early traffic-control layer, not a globally optimal MAPF planner.
+Traffic control now includes carried-rack envelopes for `1x1`, `1x2`, `2x1`, and `2x2` racks, simple capacity reservations for rotation zones and queue/service resources, conservative deadlock detection, runtime collision guards, and deterministic collision scenarios for regression tests. The runtime guard rolls back unsafe moves before visual overlap becomes accepted simulation state, logs collision-prevented warnings, and increments traffic diagnostics. It remains a practical early traffic-control layer, not a globally optimal MAPF planner.
 
 The operational chain now follows a simplified RMFS flow: order lines/SKUs -> rack selection -> station assignment -> robot assignment -> rack reservation -> empty travel -> lift -> optional rotation -> station queue/service -> inventory update -> storage/reallocation decision -> return/drop -> task/order completion.
 
@@ -194,7 +204,7 @@ The current verified pass used:
 - `npm test -- --run`
 - `npm run test:e2e -- --workers=1`
 
-Current status: build passes, unit tests pass, and Playwright E2E smoke passes. The full legacy interactive canvas E2E suite is temporarily skipped in code because Playwright/Konva click stability regressed during this traffic-control pass. Treat that as a test coverage limitation to fix next, not as a completed browser-regression claim.
+Current verified status: build passes, unit/component tests pass, and the Playwright E2E suite runs without global interactive skips. E2E covers app load, manual canvas editing, object manipulation, import/export, Mode B candidate apply, Hybrid lock preservation, one small simulation task cycle, always-visible view controls, wheel zoom, space-drag pan, workflow navigation, responsive drawers, and Simulation workflow availability.
 
 ## Controls
 
@@ -205,7 +215,9 @@ Current status: build passes, unit tests pass, and Playwright E2E smoke passes. 
 - `R`: rotate selected rack or station.
 - `Delete`: delete selected objects.
 - `Ctrl+C` / `Ctrl+V`: copy and paste selected racks.
-- Toolbar buttons: undo, redo, zoom, fit, toggle grid, labels, arrows, and heatmap.
+- Floating canvas controls: fit to screen, reset view, zoom in/out, toggle grid, labels, arrows, and heatmap. These remain available in every workflow.
+- Mouse wheel or trackpad wheel: zoom around the pointer.
+- Spacebar + left drag, middle mouse drag, right mouse drag, or Pan tool: pan the canvas.
 - Workflow rail: switch between Design, Generate, Analyze, Simulate Experimental, and Files.
 - Traffic tool: select a cell and edit allowed directions in the property panel.
 - Locking: select a cell or object and use the Locked checkbox in the property panel before Hybrid generation.
@@ -216,14 +228,14 @@ Current status: build passes, unit tests pass, and Playwright E2E smoke passes. 
 
 - 2D simulation is a foundation, not the final 3D simulator.
 - No full CBS/WHCA*/MAPF planner yet.
-- Reservation-based collision avoidance handles vertex, edge-swap, loaded-envelope, and simple resource-capacity conflicts, but it is not a complete deadlock-free traffic controller.
+- Reservation and runtime collision avoidance handle vertex, edge-swap, loaded-envelope, static-rack/blocked-cell, and simple resource-capacity conflicts, but this is still not a complete deadlock-free MAPF traffic controller.
 - Analytics remain estimates; simulation metrics are early operational approximations.
 - Order generation uses synthetic sample demand from current inventory, not imported real order waves yet.
 - Replenishment support exists in the operation helpers/service path but the UI is still pick-order focused.
 - Controller strategies are intentionally simple and not yet an experiment-runner framework.
 - Multi-cell rack support is limited to up to `2x2` occupied cells.
 - True Flying-V is an Experimental first-pass stair-step diagonal aisle generator, not a CAD-grade continuous diagonal geometry model.
-- Legacy interactive browser E2E tests are currently skipped until Playwright/Konva click stability is repaired.
+- 2D traffic control is intentionally conservative in tight layouts. It can delay or fail lower-priority work rather than inventing unsafe paths.
 
 ## Roadmap
 

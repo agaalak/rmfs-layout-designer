@@ -1,6 +1,6 @@
 # Traffic Control Audit
 
-Date: 2026-05-13
+Date: 2026-05-14
 
 ## Commands Run
 
@@ -13,10 +13,10 @@ Date: 2026-05-13
 
 ## Post-Pass Verification
 
-- `npm run build` - passed
-- `npm test -- --run` - passed, 67 tests
-- `npm run test:e2e -- --workers=1` - passed with 2 smoke tests and 10 skipped legacy interactive canvas tests
-- The skipped E2E tests are intentionally marked because Playwright/Konva click stability was unreliable during this pass. Unit/store-level tests cover the traffic-control behavior added here, and the remaining E2E smoke tests still verify app startup and Simulation workflow availability.
+- `npm run build` - passed.
+- `npm test -- --run` - passed, 74 tests.
+- `npm run test:e2e -- --workers=1` - passed, 15 browser tests with 0 skipped tests.
+- Interactive canvas E2E coverage is active again for manual editing, Mode B, Hybrid, Simulation, view controls, wheel zoom, and pan.
 
 ## Source Files Inspected
 
@@ -30,6 +30,8 @@ Date: 2026-05-13
 - `tests/simulation.test.ts`
 - `tests/rmfs-operations.test.ts`
 - `e2e/layout-editor.spec.ts`
+- `src/simulation/collisionRuntime.ts`
+- `src/simulation/scenarios/collisionScenarios.ts`
 
 ## Scenario Findings
 
@@ -110,10 +112,38 @@ Status: PARTIALLY WORKING
 - Likely files: `scenarioRunner.ts`, `simulationEngine.ts`, `SimulationPanel.tsx`, tests.
 - Priority: P1.
 
-## Highest Priority Gaps
+## User-Reported Stabilization Update - 2026-05-14
 
-1. Loaded robot reservations must include the carried rack footprint.
-2. Resource capacity reservations are needed for rotation zones, station service/queue, storage destinations, chargers, and parking.
-3. Repeated conflicts need wait/replan/block policies and event-log entries.
-4. Deadlock and no-progress detection must report problems clearly.
-5. Traffic-quality metrics are needed so low throughput is explainable.
+Commands verified after this follow-up:
+
+- `npm run build` - passed.
+- `npm test -- --run` - 74 tests passed.
+- `npm run test:e2e -- --workers=1` - 15 browser tests passed, 0 skipped.
+
+Changes made:
+
+- Added runtime collision guard in `src/simulation/collisionRuntime.ts`.
+- Integrated the guard into `stepSimulation` after robot motion and before lifecycle transitions.
+- Added collision-prevented events and traffic diagnostics.
+- Added deterministic collision scenarios in `src/simulation/scenarios/collisionScenarios.ts`.
+- Re-enabled the interactive Playwright canvas suite by removing the global skip.
+- Reduced the first-load demo to Small Demo and retained Large Demo separately.
+- Added always-visible canvas controls and mouse wheel / spacebar / middle / right drag navigation.
+- Added Simulation Readiness and Orders & Inventory fix actions.
+
+Updated scenario status:
+
+1. Small simple scenario: WORKING for one E2E task cycle on Small Demo.
+2. Single-lane conflict scenario: WORKING in unit-level deterministic runtime guard coverage; richer browser scenario remains future work.
+3. Station queue scenario: PARTIALLY WORKING; queue/service capacity is enforced in dispatch/resource logic, but advanced dispatch backpressure is still future work.
+4. Rotation-zone conflict scenario: PARTIALLY WORKING; capacity reservation exists, broader multi-robot rotation scheduling remains future work.
+5. Carried-rack footprint scenario: WORKING in unit coverage for 2x2 blocked-cell prevention; browser-level visual narrow-aisle scenario remains future work.
+6. Deadlock scenario: PARTIALLY WORKING; repeated-conflict/blocked-time detection reports and recovers conservatively, not full MAPF recovery.
+7. Larger generated scenario: PARTIALLY WORKING; Large Demo is available for stress checks, but high-count traffic can still block/fail conservatively.
+
+Highest remaining gaps:
+
+1. Add browser E2E scenarios for 2x2 carried racks in narrow aisles.
+2. Improve local replan/backoff instead of repeated rollback when a route intersects a stationary robot spawn.
+3. Add WHCA*-style rolling horizon planning after this conservative guard stays stable.
+4. Improve traffic metrics per route segment and per congested resource.

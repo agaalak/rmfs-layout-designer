@@ -6,7 +6,7 @@ describe("procedural generator", () => {
   it("creates the default demo layout with core RMFS objects", () => {
     const layout = generateProceduralLayout({ ...defaultGenerationParams, rows: 20, columns: 30 });
     expect(layout.racks.length).toBeGreaterThan(0);
-    expect(layout.stations.length).toBe(8);
+    expect(layout.stations.length).toBe(defaultGenerationParams.stationCount);
     expect(layout.chargingSpots.length).toBeGreaterThan(0);
     expect(layout.parkingSpots.length).toBeGreaterThan(0);
     expect(layout.rotationZones.length).toBeGreaterThan(0);

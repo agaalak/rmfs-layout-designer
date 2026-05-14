@@ -21,6 +21,8 @@ import { ReservationLayer } from "./ReservationLayer";
 import { RobotLayer } from "./RobotLayer";
 import { SelectionLayer } from "./SelectionLayer";
 import { SimulationOverlayLayer } from "./SimulationOverlayLayer";
+import { CanvasViewControls } from "./CanvasViewControls";
+import { clampZoom, fitLayoutToCanvas, zoomAroundPointer, type Point } from "../../utils/viewMath";
 
 interface LayoutCanvasProps {
   validation: ValidationResult;
@@ -58,27 +60,36 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
     copySelected,
     pasteClipboard
   } = useLayoutStore();
-  const { activeTool, appMode, zoom, showGrid, showLabels, showDirectionArrows, showHeatmap, heatmapMode, hoverCell, setHoverCell } = useUiStore();
+  const { activeTool, appMode, zoom, setZoom, showGrid, showLabels, showDirectionArrows, showHeatmap, heatmapMode, hoverCell, setHoverCell } = useUiStore();
   const simulation = useSimulationStore((state) => state.state);
   const simulationConfig = useSimulationStore((state) => state.config);
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
   const isPaintingRef = useRef(false);
   const lastPaintedCellRef = useRef<string | undefined>(undefined);
+  const isNavigationPanningRef = useRef(false);
+  const lastPanPointerRef = useRef<Point | undefined>(undefined);
+  const spacePressedRef = useRef(false);
   const [containerSize, setContainerSize] = useState({ width: 900, height: 620 });
   const [stagePosition, setStagePosition] = useState({ x: 0, y: 0 });
   const [selectionStart, setSelectionStart] = useState<GridCell | undefined>();
   const [selectionEnd, setSelectionEnd] = useState<GridCell | undefined>();
   const cellSize = 22;
   const designLocked = appMode === "simulation";
-  const gridPixelWidth = layout.grid.columns * cellSize * zoom;
-  const gridPixelHeight = layout.grid.rows * cellSize * zoom;
+  const gridPixelWidth = layout.grid.columns * cellSize;
+  const gridPixelHeight = layout.grid.rows * cellSize;
   const width = Math.max(320, containerSize.width);
   const height = Math.max(320, containerSize.height);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       const meta = event.ctrlKey || event.metaKey;
+      const target = event.target as HTMLElement | null;
+      const isTyping = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.tagName === "SELECT" || target?.isContentEditable;
+      if (event.code === "Space" && !isTyping) {
+        spacePressedRef.current = true;
+        event.preventDefault();
+      }
       if (event.key === "Delete" || event.key === "Backspace") deleteSelected();
       if (event.key.toLowerCase() === "r") rotateSelected();
       if (meta && event.key.toLowerCase() === "c") copySelected();
@@ -86,13 +97,18 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
       if (meta && event.key.toLowerCase() === "z") useLayoutStore.getState().undo();
       if (meta && event.key.toLowerCase() === "y") useLayoutStore.getState().redo();
     };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code === "Space") spacePressedRef.current = false;
+    };
     const exportPng = () => {
       if (stageRef.current) exportStagePng(stageRef.current);
     };
     window.addEventListener("keydown", handleKey);
+    window.addEventListener("keyup", handleKeyUp);
     window.addEventListener("rmfs-export-png", exportPng);
     return () => {
       window.removeEventListener("keydown", handleKey);
+      window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("rmfs-export-png", exportPng);
     };
   }, [copySelected, deleteSelected, pasteClipboard, rotateSelected]);
@@ -111,12 +127,42 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
+  const fitView = () => {
+    const fitted = fitLayoutToCanvas({
+      canvasWidth: width,
+      canvasHeight: height,
+      gridColumns: layout.grid.columns,
+      gridRows: layout.grid.rows,
+      cellSizePx: cellSize,
+      paddingPx: 28
+    });
+    setZoom(fitted.zoom);
+    setStagePosition(fitted.position);
+  };
+
+  const resetView = () => {
+    setZoom(1);
     setStagePosition({
       x: (width - gridPixelWidth) / 2,
       y: (height - gridPixelHeight) / 2
     });
-  }, [gridPixelHeight, gridPixelWidth, height, layout.grid.columns, layout.grid.rows, width]);
+  };
+
+  const zoomAtCanvasPoint = (pointer: Point, nextZoom: number) => {
+    const clamped = clampZoom(nextZoom);
+    setStagePosition(zoomAroundPointer({ pointer, stagePosition, oldZoom: zoom, newZoom: clamped }));
+    setZoom(clamped);
+  };
+
+  const zoomAtCenter = (nextZoom: number) => {
+    zoomAtCanvasPoint({ x: width / 2, y: height / 2 }, nextZoom);
+  };
+
+  useEffect(() => {
+    fitView();
+    // Fit only on layout/container changes. User pan/zoom should not be recentered on every zoom update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [height, layout.grid.columns, layout.grid.rows, width]);
 
   const pointerCell = (): GridCell | undefined => {
     const stage = stageRef.current;
@@ -173,7 +219,15 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
     : undefined;
 
   return (
-    <div ref={containerRef} data-testid="layout-canvas" className="relative h-full overflow-hidden bg-slate-100">
+    <div
+      ref={containerRef}
+      data-testid="layout-canvas"
+      data-stage-x={stagePosition.x.toFixed(2)}
+      data-stage-y={stagePosition.y.toFixed(2)}
+      data-zoom={zoom.toFixed(4)}
+      className="relative h-full overflow-hidden bg-slate-100"
+      onContextMenu={(event) => event.preventDefault()}
+    >
       <Stage
         ref={stageRef}
         width={width}
@@ -182,14 +236,24 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
         y={stagePosition.y}
         scaleX={zoom}
         scaleY={zoom}
-        draggable={activeTool === "pan"}
+        draggable={false}
         className="cursor-crosshair"
-        onDragEnd={(event) => {
-          if (event.target === event.target.getStage()) {
-            setStagePosition({ x: event.target.x(), y: event.target.y() });
-          }
+        onWheel={(event) => {
+          event.evt.preventDefault();
+          const pointer = stageRef.current?.getPointerPosition();
+          if (!pointer) return;
+          const factor = event.evt.deltaY > 0 ? 1 / 1.12 : 1.12;
+          zoomAtCanvasPoint(pointer, zoom * factor);
         }}
         onMouseDown={(event) => {
+          const pointer = stageRef.current?.getPointerPosition();
+          const navigationPan = activeTool === "pan" || spacePressedRef.current || event.evt.button === 1 || event.evt.button === 2;
+          if (navigationPan && pointer) {
+            isNavigationPanningRef.current = true;
+            lastPanPointerRef.current = pointer;
+            isPaintingRef.current = false;
+            return;
+          }
           const cell = pointerCell();
           if (!cell) return;
           if (designLocked) {
@@ -213,12 +277,26 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
           }
         }}
         onMouseMove={() => {
+          if (isNavigationPanningRef.current) {
+            const pointer = stageRef.current?.getPointerPosition();
+            const previous = lastPanPointerRef.current;
+            if (pointer && previous) {
+              setStagePosition((position) => ({
+                x: position.x + pointer.x - previous.x,
+                y: position.y + pointer.y - previous.y
+              }));
+              lastPanPointerRef.current = pointer;
+            }
+            return;
+          }
           const cell = pointerCell();
           setHoverCell(cell);
           if (!designLocked && isPaintingRef.current && isPaintTool && cell) paintCell(cell);
           if (selectionStart && cell) setSelectionEnd(cell);
         }}
         onMouseUp={() => {
+          isNavigationPanningRef.current = false;
+          lastPanPointerRef.current = undefined;
           isPaintingRef.current = false;
           lastPaintedCellRef.current = undefined;
           if (selectionStart && selectionEnd) {
@@ -236,6 +314,8 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
           setSelectionEnd(undefined);
         }}
         onMouseLeave={() => {
+          isNavigationPanningRef.current = false;
+          lastPanPointerRef.current = undefined;
           isPaintingRef.current = false;
           lastPaintedCellRef.current = undefined;
           setHoverCell(undefined);
@@ -275,6 +355,13 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
       <div className="absolute bottom-3 left-3 rounded-md border border-border bg-white/90 px-2 py-1 text-xs text-muted-foreground shadow-panel">
         {layout.grid.rows} x {layout.grid.columns} grid - {layout.grid.cellWidthM} m cells - zoom {(zoom * 100).toFixed(0)}%
       </div>
+      <CanvasViewControls
+        zoomPercent={`${(zoom * 100).toFixed(0)}%`}
+        onFit={fitView}
+        onReset={resetView}
+        onZoomIn={() => zoomAtCenter(zoom * 1.15)}
+        onZoomOut={() => zoomAtCenter(zoom / 1.15)}
+      />
       {hoverCell ? (
         <div className="pointer-events-none absolute right-3 top-3 rounded-md border border-border bg-white/95 px-2 py-1 text-xs text-slate-700 shadow-panel">
           Row {hoverCell.row}, Col {hoverCell.col} - {hoverObject ?? hoverCellType}

@@ -28,9 +28,9 @@ export function detectDeadlocks(state: SimulationState, config: SimulationConfig
   }
 
   for (const [pairKey, count] of Object.entries(state.trafficDiagnostics.repeatedConflictPairs)) {
-    if (count < 2) continue;
+    if (count < 3) continue;
     const robotIds = pairKey.split("__").filter((id) => id && id !== "resource");
-    if (robotIds.length >= 2) {
+    if (robotIds.length >= 2 && robotIds.every((robotId) => isActiveWaitParticipant(state, robotId))) {
       detections.push({
         robotIds: sortedIds(robotIds),
         detectedAtSec: state.simTimeSec,
@@ -47,6 +47,13 @@ export function detectDeadlocks(state: SimulationState, config: SimulationConfig
 function alreadyTracked(state: SimulationState, detection: DeadlockDetection) {
   const key = detection.robotIds.join("__");
   return state.trafficDiagnostics.activeDeadlocks.some((item) => item.robotIds.join("__") === key);
+}
+
+function isActiveWaitParticipant(state: SimulationState, robotId: string) {
+  const robot = state.robots.find((item) => item.robotId === robotId);
+  if (!robot?.assignedTaskId) return false;
+  if (!["ASSIGNED", "MOVING_EMPTY", "MOVING_LOADED", "RETURNING_RACK", "BLOCKED"].includes(robot.state)) return false;
+  return Boolean(robot.waitingReason || robot.blockedSinceSec !== undefined || state.trafficDiagnostics.robotBlockedSinceSec[robotId] !== undefined);
 }
 
 function chooseRecoveryRobot(state: SimulationState, detection: DeadlockDetection) {

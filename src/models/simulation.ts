@@ -165,6 +165,7 @@ export interface SimulationMetrics {
   deadlockCount: number;
   deadlockRecoveryCount: number;
   failedDueToTrafficCount: number;
+  runtimeCollisionPreventionCount: number;
   averageQueueWaitTimeSec: number;
   maxQueueWaitTimeSec: number;
   loadedTravelDistanceM: number;
@@ -215,10 +216,12 @@ export interface TrafficDiagnostics {
   repeatedConflictPairs: Record<string, number>;
   activeDeadlocks: Array<{ robotIds: string[]; detectedAtSec: number; reason: string }>;
   lastConflicts: Array<{ timeSec: number; robotId?: string; taskId?: string; resourceId?: string; message: string }>;
+  runtimeCollisionPreventionCount: number;
+  unsafeAttemptedMoves: Array<{ timeSec: number; robotId: string; message: string; cells?: GridCell[] }>;
 }
 
 export const defaultSimulationConfig: SimulationConfig = {
-  robotCount: 10,
+  robotCount: 4,
   unloadedSpeedMps: 1.5,
   loadedSpeedMps: 1.2,
   accelerationMps2: 0.8,
@@ -228,7 +231,7 @@ export const defaultSimulationConfig: SimulationConfig = {
   dropTimeSec: 8,
   stationServiceTimeSec: 30,
   taskGenerationMode: "random_nearest",
-  taskCount: 10,
+  taskCount: 6,
   reservationTimeStepSec: 1,
   showPaths: true,
   showReservations: false,
@@ -268,6 +271,7 @@ export const emptySimulationMetrics: SimulationMetrics = {
   deadlockCount: 0,
   deadlockRecoveryCount: 0,
   failedDueToTrafficCount: 0,
+  runtimeCollisionPreventionCount: 0,
   averageQueueWaitTimeSec: 0,
   maxQueueWaitTimeSec: 0,
   loadedTravelDistanceM: 0,
@@ -292,5 +296,7 @@ export const emptyTrafficDiagnostics: TrafficDiagnostics = {
   robotBlockedSinceSec: {},
   repeatedConflictPairs: {},
   activeDeadlocks: [],
-  lastConflicts: []
+  lastConflicts: [],
+  runtimeCollisionPreventionCount: 0,
+  unsafeAttemptedMoves: []
 };

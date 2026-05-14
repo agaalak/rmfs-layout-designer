@@ -99,7 +99,8 @@ export function RightPropertiesPanel({ validation, analytics, onSelectIssue, dis
     updateCell,
     toggleSelectedLock,
     newLayout,
-    loadDemo
+    loadSmallDemo,
+    loadLargeDemo
   } = useLayoutStore();
   const setWorkflow = useUiStore((state) => state.setWorkflow);
   const object = selectedObject(layout, selected);
@@ -141,8 +142,11 @@ export function RightPropertiesPanel({ validation, analytics, onSelectIssue, dis
               <button className="toolbar-button justify-center" onClick={() => setWorkflow("generate")}>
                 Generate layout
               </button>
-              <button className="toolbar-button justify-center" onClick={() => loadDemo()}>
-                Load demo
+              <button className="toolbar-button justify-center" onClick={() => loadSmallDemo()}>
+                Load Small Demo
+              </button>
+              <button className="toolbar-button justify-center" onClick={() => loadLargeDemo()}>
+                Load Large Demo
               </button>
             </div>
           </div>

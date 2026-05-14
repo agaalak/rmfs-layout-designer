@@ -18,6 +18,8 @@ import {
   validateSimulationStart
 } from "../simulation/simulationEngine";
 import { createReservationTable } from "../simulation/reservationTable";
+import { inventoryFromLayout } from "../simulation/inventory";
+import { generateSampleOrders } from "../simulation/orderGeneration";
 
 interface SimulationStoreState {
   config: SimulationConfig;
@@ -27,6 +29,10 @@ interface SimulationStoreState {
   setConfig: (patch: Partial<SimulationConfig>) => void;
   initialize: (layout: WarehouseLayout) => string[];
   generateTasks: (layout: WarehouseLayout) => void;
+  refreshInventorySnapshot: (layout: WarehouseLayout) => void;
+  generateOrdersFromInventory: (layout: WarehouseLayout) => void;
+  clearOrders: () => void;
+  clearInventorySnapshot: () => void;
   createManualTask: (layout: WarehouseLayout, rackId?: string, stationId?: string) => void;
   play: () => void;
   pause: () => void;
@@ -87,7 +93,7 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
       return errors;
     }
     set((current) => ({
-      state: initializeSimulation(layout, current.config)
+      state: initializeSimulation(layout, { ...current.config, ...(layout.simulationConfig ?? {}) })
     }));
     return [];
   },
@@ -118,6 +124,56 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
         }
       };
     }),
+  refreshInventorySnapshot: (layout) =>
+    set((current) => ({
+      state: {
+        ...current.state,
+        inventory: inventoryFromLayout(layout),
+        eventLog: [
+          ...current.state.eventLog,
+          { timeSec: current.state.simTimeSec, severity: "info" as const, entityType: "inventory" as const, message: "Inventory snapshot refreshed from layout rack bins." }
+        ].slice(-500)
+      }
+    })),
+  generateOrdersFromInventory: (layout) =>
+    set((current) => {
+      const inventory = current.state.inventory.length > 0 ? current.state.inventory : inventoryFromLayout(layout);
+      const orders = generateSampleOrders(inventory, current.config.taskCount, current.state.simTimeSec, current.state.orders.length + current.state.completedOrders.length + current.state.failedOrders.length);
+      return {
+        state: {
+          ...current.state,
+          inventory,
+          orders: [...current.state.orders, ...orders],
+          eventLog: [
+            ...current.state.eventLog,
+            {
+              timeSec: current.state.simTimeSec,
+              severity: orders.length > 0 ? "info" as const : "warning" as const,
+              entityType: "order" as const,
+              message: orders.length > 0 ? `Generated ${orders.length} sample order(s) from available inventory.` : "No sample orders generated because no SKU inventory is available."
+            }
+          ].slice(-500)
+        }
+      };
+    }),
+  clearOrders: () =>
+    set((current) => ({
+      state: {
+        ...current.state,
+        orders: [],
+        completedOrders: [],
+        failedOrders: [],
+        eventLog: [...current.state.eventLog, { timeSec: current.state.simTimeSec, severity: "info" as const, entityType: "order" as const, message: "Cleared generated orders." }].slice(-500)
+      }
+    })),
+  clearInventorySnapshot: () =>
+    set((current) => ({
+      state: {
+        ...current.state,
+        inventory: [],
+        eventLog: [...current.state.eventLog, { timeSec: current.state.simTimeSec, severity: "info" as const, entityType: "inventory" as const, message: "Cleared simulation inventory snapshot." }].slice(-500)
+      }
+    })),
   createManualTask: (layout, rackId, stationId) =>
     set((current) => {
       const selectedRackId = rackId ?? current.manualRackId ?? layout.racks[0]?.id;

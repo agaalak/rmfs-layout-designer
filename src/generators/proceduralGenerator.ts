@@ -20,7 +20,28 @@ export const APP_VERSION = "0.2.0";
 
 type CellMap = Map<string, CellType>;
 
-export const defaultGenerationParams: GenerationParams = {
+export const smallDemoGenerationParams: GenerationParams = {
+  rows: 22,
+  columns: 30,
+  cellWidthM: 1.2,
+  cellDepthM: 1.2,
+  rackFootprintWidthM: 1,
+  rackFootprintDepthM: 1,
+  rackFillRatio: 0.09,
+  verticalAisleSpacing: 5,
+  horizontalCrossAisleSpacing: 7,
+  stationCount: 3,
+  stationPlacementStrategy: "external",
+  chargerCount: 2,
+  chargerSizeCells: 1,
+  parkingSpotCount: 4,
+  trafficMode: "two_way",
+  rotationZoneCount: 4,
+  candidateCount: 6,
+  layoutFamily: "traditional_external"
+};
+
+export const largeDemoGenerationParams: GenerationParams = {
   rows: 40,
   columns: 60,
   cellWidthM: 1.2,
@@ -40,6 +61,8 @@ export const defaultGenerationParams: GenerationParams = {
   candidateCount: 10,
   layoutFamily: "traditional_external"
 };
+
+export const defaultGenerationParams: GenerationParams = smallDemoGenerationParams;
 
 export function makeLayoutShell(params: GenerationParams, mode: WarehouseLayout["mode"]): WarehouseLayout {
   const grid = {
@@ -472,7 +495,7 @@ export function generateProceduralLayout(params: GenerationParams): WarehouseLay
 
   return ensureStorageLocations({
     ...layout,
-    name: "Mode B Generated Layout",
+    name: params.rows <= 24 && params.columns <= 32 ? "Small RMFS Demo Layout" : "Mode B Generated Layout",
     modifiedAt: new Date().toISOString(),
     cells: materializeCells(cells, params.trafficMode),
     racks,
@@ -480,8 +503,31 @@ export function generateProceduralLayout(params: GenerationParams): WarehouseLay
     chargingSpots: chargers,
     parkingSpots: parking,
     rotationZones: rotations,
-    metadata: { ...layout.metadata, layoutFamily: params.layoutFamily }
+    simulationConfig: params.rows <= 24 && params.columns <= 32 ? ({ ...(layout.simulationConfig ?? {}), robotCount: 4, taskCount: 6 } as WarehouseLayout["simulationConfig"]) : layout.simulationConfig,
+    metadata: {
+      ...layout.metadata,
+      layoutFamily: params.layoutFamily,
+      demoSize: params.rows <= 24 && params.columns <= 32 ? "small" : params.rows >= 40 && params.columns >= 60 ? "large" : "custom"
+    }
   });
+}
+
+export function generateSmallDemoLayout(): WarehouseLayout {
+  const layout = generateProceduralLayout(smallDemoGenerationParams);
+  return {
+    ...layout,
+    name: "Small RMFS Demo Layout",
+    metadata: { ...layout.metadata, demoPreset: "small" }
+  };
+}
+
+export function generateLargeDemoLayout(): WarehouseLayout {
+  const layout = generateProceduralLayout(largeDemoGenerationParams);
+  return {
+    ...layout,
+    name: "Large RMFS Stress Demo Layout",
+    metadata: { ...layout.metadata, demoPreset: "large" }
+  };
 }
 
 const candidateFamilies: GenerationParams["layoutFamily"][] = [

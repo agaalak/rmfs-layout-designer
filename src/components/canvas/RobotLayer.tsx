@@ -66,6 +66,12 @@ export function RobotLayer({
               />
             ) : null}
             <Circle radius={cellSize * 0.34} fill={robot.color} stroke={robot.state === "BLOCKED" || robot.state === "ERROR" ? "#7f1d1d" : "#0f172a"} strokeWidth={2} />
+            {robot.waitingReason || robot.blockedReason ? (
+              <Group y={-cellSize * 0.95}>
+                <Circle radius={cellSize * 0.18} fill="#f59e0b" stroke="#7c2d12" strokeWidth={1.5} />
+                <Text text="!" x={-cellSize * 0.12} y={-cellSize * 0.18} width={cellSize * 0.24} align="center" fontSize={cellSize * 0.28} fontStyle="bold" fill="#7c2d12" />
+              </Group>
+            ) : null}
             <Arrow
               rotation={robot.pose.yawDeg}
               points={[0, 0, 0, -cellSize * 0.32]}

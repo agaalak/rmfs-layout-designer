@@ -8,10 +8,12 @@ export function selectRobotForCell(
   layout: WarehouseLayout,
   robots: Robot[],
   targetCell: GridCell,
-  strategy: RobotAssignmentStrategy
+  strategy: RobotAssignmentStrategy,
+  unavailableRobotIds: ReadonlySet<string> = new Set()
 ): Robot | undefined {
-  const available = robots.filter((robot) => ["IDLE", "PARKING", "CHARGING"].includes(robot.state) && !robot.assignedTaskId);
+  const available = robots.filter(
+    (robot) => ["IDLE", "PARKING", "CHARGING"].includes(robot.state) && !robot.assignedTaskId && !unavailableRobotIds.has(robot.robotId)
+  );
   if (strategy === "first_available_robot") return available[0];
   return [...available].sort((a, b) => manhattanMeters(a.currentCell, targetCell, layout.grid) - manhattanMeters(b.currentCell, targetCell, layout.grid))[0];
 }
-

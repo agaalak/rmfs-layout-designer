@@ -12,12 +12,14 @@ These rules describe the current RMFS Layout Designer interface and should guide
 - Keep Analyze focused on validation, analytics, heatmaps, and reports.
 - Keep Simulation isolated and marked Experimental until it is a reliable discrete-event simulator.
 - Keep Files focused on import/export.
+- Keep canvas view controls floating inside the canvas so fit/zoom/toggles are available in every workflow.
 
 ## Component Usage
 
 - Use `.toolbar-button-primary` for the primary action in a workflow.
 - Use `.toolbar-button` for secondary actions.
 - Use `.icon-button` only when the icon is familiar and there is a clear `aria-label` and `title`.
+- Scope duplicate actions carefully in tests and UI copy. For example, "Reset view" is distinct from simulation "Reset".
 - Use `.badge-stable` and `.badge-experimental` for workflow maturity.
 - Use `.metric-card` for scan-friendly metrics.
 - Use section titles with `.panel-title`.
@@ -74,6 +76,7 @@ Color should never be the only state indicator. Pair color with text, badges, ou
 - Drawer buttons should be short, explicit, and reachable near the lower-right canvas edge.
 - Drawers should close with Escape in future dialog hardening; for now they close through the visible close button or backdrop click.
 - Do not remove essential actions without an alternative access path.
+- Mouse wheel zoom, spacebar drag, middle/right drag pan, and Fit to Screen are baseline navigation behaviors and should not depend on Design workflow being active.
 
 ## Workflow Principles
 

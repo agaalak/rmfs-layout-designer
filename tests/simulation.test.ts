@@ -38,7 +38,7 @@ const fastConfig: SimulationConfig = {
 
 describe("2D simulation foundation", () => {
   it("provides simulation config defaults", () => {
-    expect(defaultSimulationConfig.robotCount).toBe(10);
+    expect(defaultSimulationConfig.robotCount).toBe(4);
     expect(defaultSimulationConfig.unloadedSpeedMps).toBe(1.5);
     expect(defaultSimulationConfig.reservationTimeStepSec).toBe(1);
   });
@@ -215,9 +215,20 @@ describe("2D simulation foundation", () => {
     let state = initializeSimulation(layout, { ...fastConfig, robotCount: 2, maxBlockedTimeSec: 1 });
     state = {
       ...state,
+      robots: state.robots.map((robot, index) => ({
+        ...robot,
+        state: "MOVING_EMPTY",
+        assignedTaskId: `task_${index + 1}`,
+        waitingReason: "Repeated reservation conflict",
+        blockedSinceSec: 0
+      })),
       trafficDiagnostics: {
         ...state.trafficDiagnostics,
-        repeatedConflictPairs: { [`${state.robots[0].robotId}__${state.robots[1].robotId}`]: 2 }
+        robotBlockedSinceSec: {
+          [state.robots[0].robotId]: 0,
+          [state.robots[1].robotId]: 0
+        },
+        repeatedConflictPairs: { [`${state.robots[0].robotId}__${state.robots[1].robotId}`]: 3 }
       }
     };
     const detections = detectDeadlocks(state, { ...fastConfig, deadlockDetectionEnabled: true });

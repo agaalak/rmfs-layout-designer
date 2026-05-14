@@ -184,8 +184,11 @@ Core functions:
 - `stepSimulation(layout, state, config, deltaTimeSec)`
 - `reservationCellsForDisplay(state)`
 - `robotCarriedRackOffsets(robot, layout)`
+- runtime collision guard in `src/simulation/collisionRuntime.ts`
 
 The engine is deterministic and step-based. The app shell calls `stepSimulation` on an interval while Experimental Simulation Mode is running. A manual Step button advances by one simulated second multiplied by the speed setting.
+
+After movement, the runtime collision guard checks robot envelopes against other robots, edge swaps, blocked cells, and stored racks. Unsafe moves are rolled back to the previous safe robot pose/cell, a collision-prevented event is logged, and traffic diagnostics are incremented.
 
 ## Visual Layers
 
@@ -206,6 +209,7 @@ Visual behavior:
 - Planned paths render as dashed polylines when enabled.
 - Reservation cells render as a translucent overlay when enabled.
 - Station queues show small occupancy indicators near station cells.
+- Blocked/waiting robots show a warning marker.
 
 ## Station Queue Logic
 
@@ -232,6 +236,8 @@ Current behavior: compatible rotation-zone paths create explicit `ROTATING_WITH_
 
 Existing layout validation continues to cover overlaps, bounds, charger/parking size, footprint issues, connectivity, orientation, and face access.
 
+The Simulation panel also shows a Readiness card and one-click fixes for missing sample inventory/orders on manual layouts.
+
 ## Exports
 
 Simulation export helpers live in `src/importExport/exportSimulation.ts`.
@@ -250,7 +256,7 @@ Simulation config JSON can also be imported with validation.
 
 Recommended sequence:
 
-1. Repair skipped browser interaction tests so canvas/manual workflows are covered end to end again.
+1. Add more browser collision scenarios for carried multi-cell racks and deadlock recovery.
 2. Add WHCA* as a bounded rolling-horizon planner over the current reservation table.
 3. Add CBS for small benchmark scenarios and comparison tests.
 4. Improve deadlock recovery from conservative blocking to safe local replanning.

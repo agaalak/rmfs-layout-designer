@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { GridCell } from "../models/grid";
 import type { AppMode } from "../models/simulation";
+import { clampZoom } from "../utils/viewMath";
 
 export type Workflow = "design" | "generate" | "analyze" | "simulation" | "files";
 
@@ -64,10 +65,10 @@ export const useUiStore = create<UiState>((set) => ({
   setAppMode: (appMode) => set({ appMode, workflow: appMode === "simulation" ? "simulation" : "design", activeTool: "select" }),
   setWorkflow: (workflow) => set({ workflow, appMode: workflow === "simulation" ? "simulation" : "design", activeTool: workflow === "design" ? "select" : "select" }),
   setHoverCell: (hoverCell) => set({ hoverCell }),
-  setZoom: (zoom) => set({ zoom: Math.max(0.3, Math.min(2.5, zoom)) }),
-  zoomIn: () => set((state) => ({ zoom: Math.min(2.5, state.zoom + 0.1) })),
-  zoomOut: () => set((state) => ({ zoom: Math.max(0.3, state.zoom - 0.1) })),
-  fitToScreen: () => set({ zoom: 0.72 }),
+  setZoom: (zoom) => set({ zoom: clampZoom(zoom) }),
+  zoomIn: () => set((state) => ({ zoom: clampZoom(state.zoom * 1.15) })),
+  zoomOut: () => set((state) => ({ zoom: clampZoom(state.zoom / 1.15) })),
+  fitToScreen: () => set({ zoom: 1 }),
   toggleGrid: () => set((state) => ({ showGrid: !state.showGrid })),
   toggleLabels: () => set((state) => ({ showLabels: !state.showLabels })),
   toggleDirectionArrows: () => set((state) => ({ showDirectionArrows: !state.showDirectionArrows })),

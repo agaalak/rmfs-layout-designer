@@ -13,9 +13,13 @@ import {
   chooseBestProceduralCandidate,
   createEmptyLayout,
   defaultGenerationParams,
+  generateLargeDemoLayout,
   generateProceduralLayout,
   generateProceduralCandidates,
+  generateSmallDemoLayout,
+  largeDemoGenerationParams,
   makeRackBins,
+  smallDemoGenerationParams,
   sortCandidateSummaries,
   summarizeCandidates
 } from "../generators/proceduralGenerator";
@@ -145,6 +149,8 @@ function removeObjectsAtCell(layout: WarehouseLayout, cell: GridCell): Warehouse
   return next;
 }
 
+const sampleSkus = ["SKU-HOT-001", "SKU-HOT-002", "SKU-WARM-001", "SKU-WARM-002", "SKU-COLD-001", "SKU-COLD-002"];
+
 function makeDefaultRack(index: number, homeCell: GridCell): Rack {
   const rackId = nextSequentialId("rack", index);
   return {
@@ -165,7 +171,13 @@ function makeDefaultRack(index: number, homeCell: GridCell): Rack {
       localSide: faceId === "A" ? "FRONT" : "BACK",
       rows: 4,
       columns: 3,
-      bins: makeRackBins(rackId, faceId as "A" | "B", 4, 3)
+      bins: makeRackBins(rackId, faceId as "A" | "B", 4, 3).map((bin, binIndex) => ({
+        ...bin,
+        sku: sampleSkus[(index + binIndex) % sampleSkus.length],
+        quantity: 8 + ((index + binIndex) % 7),
+        reservedQuantity: 0,
+        maxQuantity: 40
+      }))
     }))
   };
 }
@@ -202,6 +214,10 @@ interface LayoutState {
   closeCandidateComparison: () => void;
   generateHybrid: (params: GenerationParams) => void;
   loadDemo: () => void;
+  loadSmallDemo: () => void;
+  loadLargeDemo: () => void;
+  populateSampleInventory: () => void;
+  clearSampleInventory: () => void;
   selectObject: (ref: SelectedObjectRef, additive?: boolean) => void;
   selectCell: (cell: GridCell) => void;
   clearSelection: () => void;
@@ -232,7 +248,43 @@ interface LayoutState {
   redo: () => void;
 }
 
-const initialLayout = generateProceduralLayout(defaultGenerationParams);
+function withSampleInventory(layout: WarehouseLayout): WarehouseLayout {
+  return {
+    ...layout,
+    racks: layout.racks.map((rack, rackIndex) => ({
+      ...rack,
+      faces: rack.faces.map((face) => ({
+        ...face,
+        bins: face.bins.map((bin, binIndex) => ({
+          ...bin,
+          sku: bin.sku ?? sampleSkus[(rackIndex + binIndex) % sampleSkus.length],
+          quantity: bin.quantity && bin.quantity > 0 ? bin.quantity : 8 + ((rackIndex + binIndex) % 7),
+          reservedQuantity: 0,
+          maxQuantity: bin.maxQuantity ?? 40
+        }))
+      }))
+    })),
+    modifiedAt: new Date().toISOString(),
+    metadata: { ...layout.metadata, sampleInventoryPopulated: true }
+  };
+}
+
+function withoutSampleInventory(layout: WarehouseLayout): WarehouseLayout {
+  return {
+    ...layout,
+    racks: layout.racks.map((rack) => ({
+      ...rack,
+      faces: rack.faces.map((face) => ({
+        ...face,
+        bins: face.bins.map((bin) => ({ ...bin, sku: undefined, quantity: 0, reservedQuantity: 0 }))
+      }))
+    })),
+    modifiedAt: new Date().toISOString(),
+    metadata: { ...layout.metadata, sampleInventoryPopulated: false }
+  };
+}
+
+const initialLayout = generateSmallDemoLayout();
 
 function commit(history: HistoryState<WarehouseLayout>, layout: WarehouseLayout) {
   return pushHistory(history, ensureStorageLocations(cloneLayout(layout)));
@@ -341,11 +393,35 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     })),
   loadDemo: () =>
     set((state) => ({
-      generationParams: defaultGenerationParams,
-      history: commit(state.history, generateProceduralLayout(defaultGenerationParams)),
+      generationParams: smallDemoGenerationParams,
+      history: commit(state.history, generateSmallDemoLayout()),
       selected: [],
       selectedCell: undefined,
       candidateComparison: undefined
+    })),
+  loadSmallDemo: () =>
+    set((state) => ({
+      generationParams: smallDemoGenerationParams,
+      history: commit(state.history, generateSmallDemoLayout()),
+      selected: [],
+      selectedCell: undefined,
+      candidateComparison: undefined
+    })),
+  loadLargeDemo: () =>
+    set((state) => ({
+      generationParams: largeDemoGenerationParams,
+      history: commit(state.history, generateLargeDemoLayout()),
+      selected: [],
+      selectedCell: undefined,
+      candidateComparison: undefined
+    })),
+  populateSampleInventory: () =>
+    set((state) => ({
+      history: commit(state.history, withSampleInventory(state.history.present))
+    })),
+  clearSampleInventory: () =>
+    set((state) => ({
+      history: commit(state.history, withoutSampleInventory(state.history.present))
     })),
   selectObject: (ref, additive = false) =>
     set((state) => ({

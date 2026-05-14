@@ -10,6 +10,7 @@ Experimental Simulation Mode uses practical reservation-based traffic control. I
 - Visual movement is continuous interpolation between grid cells.
 - Unloaded robot footprint is one grid cell.
 - Loaded robot footprint includes the robot center cell plus the carried rack footprint.
+- Runtime collision enforcement runs after movement and rolls back unsafe moves before they become accepted visible simulation state.
 - Racks are limited to the supported layout footprint sizes, currently up to `2x2` cells.
 - No turn-radius or acceleration envelope is modeled yet.
 - No CBS, WHCA*, or full MAPF solver is implemented in this pass.
@@ -28,6 +29,7 @@ Experimental Simulation Mode uses practical reservation-based traffic control. I
 - Vertex conflict: two robots reserve the same cell at the same timestep.
 - Edge-swap conflict: two robots traverse the same edge in opposite directions at the same timestep.
 - Footprint overlap: a loaded robot envelope overlaps another robot/rack/object envelope.
+- Runtime robot overlap: interpolated or step-advanced robots attempt to occupy overlapping visible envelope cells.
 - Swept-envelope conflict: a loaded envelope would overlap blocked/static cells during a move.
 - Station queue capacity conflict: no queue slot is available.
 - Rotation-zone capacity conflict: rotation zone is already reserved at that time.
@@ -55,13 +57,15 @@ This pass adds:
 - repeated-conflict and blocked-time deadlock detection in `src/simulation/deadlockDetector.ts`
 - deterministic scenario runner support in `src/simulation/scenarioRunner.ts`
 - Traffic Control diagnostics in Simulation Mode
+- runtime collision guard in `src/simulation/collisionRuntime.ts`
+- deterministic collision scenarios in `src/simulation/scenarios/collisionScenarios.ts`
 
 ## Verification Status
 
 - `npm run build` passed.
-- `npm test -- --run` passed with 67 tests.
-- `npm run test:e2e -- --workers=1` passed with 2 smoke tests and 10 skipped legacy interactive canvas tests.
-- The skipped E2E tests should be repaired before using browser automation as the main regression gate for Design/Generate/Analyze/Simulation workflows.
+- `npm test -- --run` passed with 74 tests.
+- `npm run test:e2e -- --workers=1` passed with 15 browser tests and 0 skipped tests.
+- Browser coverage now includes manual canvas editing, Mode B candidate apply, Hybrid locked-cell preservation, one simple simulation cycle, view controls across workflows, mouse wheel zoom, and mouse/spacebar pan.
 
 ## Known Limitations
 
@@ -70,11 +74,11 @@ This pass adds:
 - Deadlock recovery is conservative and favors reporting/clearing reservations over complex cooperative replanning.
 - Loaded swept envelopes are cell-based, not continuous geometry.
 - Rotation-zone and station resources use simple capacity counts.
-- Browser E2E coverage is currently smoke-level for this pass because deep interactive canvas tests are skipped pending Playwright/Konva click-stability repair.
+- This is still not full MAPF. Dense/high-robot scenarios can still block or fail lower-priority tasks conservatively.
 
 ## Next Steps
 
-1. Re-enable and stabilize the skipped interactive Playwright tests.
+1. Add more browser-level collision E2E scenarios for carried 2x2 racks and narrow aisles.
 2. Add WHCA*-style rolling-horizon prioritized planning on top of the reservation table.
 3. Add CBS-style small-scenario comparison after WHCA* is stable.
 4. Improve deadlock recovery from conservative blocking to safe local backoff/replan.

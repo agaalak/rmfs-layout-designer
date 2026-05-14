@@ -3,8 +3,6 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 
-test.skip(true, "Interactive canvas workflow E2E coverage is temporarily disabled while Playwright/Konva click stability is repaired; unit and store-level tests cover these flows.");
-
 async function appState(page: Page) {
   return page.evaluate(() => {
     const api = (window as unknown as { __RMFS_TEST__: any }).__RMFS_TEST__;
@@ -16,6 +14,8 @@ async function appState(page: Page) {
       activeTool: api.ui.getState().activeTool,
       layoutName: layout.name,
       mode: layout.mode,
+      rows: layout.grid.rows,
+      columns: layout.grid.columns,
       cells: layout.cells.length,
       roads: layout.cells.filter((cell) => cell.cellType === "ROAD").length,
       blocked: layout.cells.filter((cell) => cell.cellType === "BLOCKED").length,
@@ -44,7 +44,8 @@ async function appState(page: Page) {
       simCompletedOrders: simulation.state.completedOrders.length,
       simInventoryBins: simulation.state.inventory.length,
       simInventoryTotal: simulation.state.inventory.reduce((sum: number, bin: any) => sum + bin.quantity, 0),
-      simControllerEvents: simulation.state.eventLog.filter((event: any) => event.entityType === "controller").length
+      simControllerEvents: simulation.state.eventLog.filter((event: any) => event.entityType === "controller").length,
+      runtimeCollisionPreventions: simulation.state.trafficDiagnostics.runtimeCollisionPreventionCount
     };
   });
 }
@@ -53,6 +54,14 @@ async function clickCanvas(page: Page, xRatio: number, yRatio: number) {
   const box = await page.getByTestId("layout-canvas").boundingBox();
   if (!box) throw new Error("Canvas bounding box unavailable");
   await page.mouse.click(box.x + box.width * xRatio, box.y + box.height * yRatio);
+}
+
+async function canvasViewState(page: Page) {
+  return page.getByTestId("layout-canvas").evaluate((element) => ({
+    zoom: Number((element as HTMLElement).dataset.zoom),
+    stageX: Number((element as HTMLElement).dataset.stageX),
+    stageY: Number((element as HTMLElement).dataset.stageY)
+  }));
 }
 
 async function newManualLayout(page: Page) {
@@ -80,6 +89,8 @@ test("app loads with demo canvas and no console errors", async ({ page }) => {
   const state = await appState(page);
   expect(state.racks).toBeGreaterThan(0);
   expect(state.stations).toBeGreaterThan(0);
+  expect(state.rows).toBeLessThanOrEqual(24);
+  expect(state.columns).toBeLessThanOrEqual(32);
   expect(consoleProblems).toEqual([]);
 });
 
@@ -268,6 +279,49 @@ test("experimental simulation can complete one simple task cycle", async ({ page
   expect(completed.events).toBeGreaterThan(0);
   expect((await appState(page)).simCompletedOrders).toBeGreaterThan(0);
   expect((await appState(page)).simInventoryTotal).toBeLessThan(inventoryBefore);
-  await page.getByRole("button", { name: "Reset" }).click();
+  await page.getByRole("button", { name: "Reset", exact: true }).click();
   expect((await appState(page)).simInitialized).toBe(false);
+});
+
+test("manual layout can populate inventory and generate sample orders", async ({ page }) => {
+  await newManualLayout(page);
+  await page.evaluate(() => {
+    const api = (window as unknown as { __RMFS_TEST__: any }).__RMFS_TEST__;
+    api.layout.getState().addRack({ row: 3, col: 3 });
+  });
+  await page.getByRole("button", { name: /Simulate workflow/ }).click();
+  await page.getByRole("button", { name: "Populate Inventory" }).click();
+  await page.getByRole("button", { name: "Generate Orders" }).click();
+  await expect.poll(async () => (await appState(page)).simOrders).toBeGreaterThan(0);
+  await expect.poll(async () => (await appState(page)).simInventoryBins).toBeGreaterThan(0);
+});
+
+test("canvas view controls stay visible across workflows", async ({ page }) => {
+  for (const name of [/Design workflow/, /Generate workflow/, /Analyze workflow/, /Simulate workflow/, /Files workflow/]) {
+    await page.getByRole("button", { name }).click();
+    await expect(page.getByTestId("canvas-view-controls")).toBeVisible();
+    await expect(page.getByTestId("canvas-view-controls").getByRole("button", { name: "Fit to screen" })).toBeVisible();
+    await expect(page.getByTestId("canvas-view-controls").getByRole("button", { name: "Toggle grid" })).toBeVisible();
+  }
+});
+
+test("mouse wheel zoom and mouse drag pan update canvas view state", async ({ page }) => {
+  const box = await page.getByTestId("layout-canvas").boundingBox();
+  if (!box) throw new Error("Canvas bounding box unavailable");
+  const before = await canvasViewState(page);
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, -500);
+  await expect.poll(async () => (await canvasViewState(page)).zoom).not.toBe(before.zoom);
+
+  const afterZoom = await canvasViewState(page);
+  await page.keyboard.down("Space");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 80, box.y + box.height / 2 + 40, { steps: 6 });
+  await page.mouse.up();
+  await page.keyboard.up("Space");
+  await expect.poll(async () => {
+    const current = await canvasViewState(page);
+    return Math.abs(current.stageX - afterZoom.stageX) + Math.abs(current.stageY - afterZoom.stageY);
+  }).toBeGreaterThan(1);
 });

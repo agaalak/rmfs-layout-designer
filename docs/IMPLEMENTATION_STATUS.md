@@ -28,7 +28,9 @@
 - Status bar with selected tool/object/cell, hover row/column, zoom, validation error count, and unsaved changes indicator.
 - Keyboard shortcut help dialog, clear-layout confirmation, and load-demo dirty-layout confirmation.
 - Quick-start empty state with Start empty Mode A layout, Generate layout, and Load demo actions.
-- Default demo layout on first load and a toolbar Load Demo action.
+- Default Small Demo layout on first load, plus optional Large Demo / stress layout actions.
+- Always-visible floating canvas view controls for fit, reset, zoom, grid, labels, direction arrows, and heatmap across every workflow.
+- Pointer-centered mouse wheel zoom plus spacebar/middle/right-drag canvas panning.
 - Design/Simulation mode toggle that locks normal editing during simulator playback.
 - 2D simulation data models for robots, tasks, route plans, station queues, reservation snapshots, event logs, and metrics.
 - Robot initialization from parking spots first, chargers second, then perimeter road fallback cells.
@@ -40,6 +42,7 @@
 - Simulation control panel with initialize, generate tasks, create manual task, play/pause/step/reset, speed multiplier, display toggles, settings, event filters, and simulation config/log/metrics exports.
 - Traffic Control diagnostics section in Experimental Simulation Mode showing conflicts, waits, replans, deadlocks, active reservations, blocked/waiting robots, and traffic policy settings.
 - Carried-rack collision envelope module with unloaded/loaded robot envelopes, rectangular rack rotation support, blocked-cell/static-rack overlap detection, and reservation footprint conversion.
+- Runtime collision guard that checks simulation state after movement, prevents accepted same-cell, edge-swap, loaded-envelope, stored-rack, and blocked-cell overlaps, rolls unsafe moves back, and logs collision-prevented warning events.
 - Resource reservation support for rotation zones, station queue slots, station service, storage locations, chargers, and parking.
 - Conservative deadlock detector and recovery hook for repeated conflict pairs and robots blocked beyond configured thresholds.
 - Deterministic simulation scenario runner for non-browser regression tests.
@@ -53,6 +56,8 @@
 - Simulation Mode now creates sample orders from actual rack inventory, selects racks by SKU availability, reserves inventory/racks/storage, updates inventory at service, completes orders after rack return, and records structured operational events.
 - Rack storage/reallocation strategies include return home, nearest available storage, and keep hot racks near stations.
 - Simulation UI now includes Orders & Inventory, Controllers, operational task trace, robot/station state summaries, and orders/inventory CSV exports.
+- Simulation Readiness card now explains missing layout/inventory/station/storage/simulation prerequisites and exposes one-click inventory/order fixes.
+- Orders & Inventory actions now populate sample rack-bin inventory, refresh the inventory snapshot, generate sample orders from available SKU inventory, clear orders, clear inventory, and auto-fix readiness where safe.
 - Canonical RMFS domain type definitions for waypoints, storage locations, rack/pod operational state, station resources, orders, and controller boundaries.
 - Graph construction now derives routing waypoints before building road edges.
 - Playwright E2E suite for startup, manual editing, validation, import/export, Mode B, Hybrid, and Experimental Simulation Mode.
@@ -106,15 +111,16 @@
 - Responsive follow-up added drawer panels and `npm run test:e2e:smoke` for faster UI regressions.
 - RMFS behavior pass promoted storage locations, orders, inventory, controller strategies, operational tasks, rack lifecycle state, station inventory service, rotation events, and storage reallocation into real simulator code.
 - Traffic-control pass added loaded rack envelopes, envelope/resource reservations, wait/replan counters, conservative deadlock detection/recovery, traffic metrics, scenario runner, and a targeted Traffic Control UI section.
+- User-reported stabilization pass confirmed and fixed the oversized default demo, missing workflow-independent view controls, weak mouse zoom/pan, missing order/inventory recovery actions, and globally skipped interactive canvas E2E coverage.
+- User-reported stabilization pass added runtime collision enforcement so the simulator does not accept visually overlapping robot/rack states after movement.
 
 ## Test Status
 
 - `npm install`: passed, 0 vulnerabilities.
-- `npm run build`: passed. Manual chunks now avoid the previous large single-bundle warning.
-- `npm test -- --run`: 11 files passed, 67 tests passed.
-- `npm run test:e2e -- --workers=1 --grep "Mode B|experimental simulation"`: 2 browser tests passed after storage-normalization performance repair.
-- `npm run test:e2e -- --workers=1`: passed with 2 browser smoke tests and 10 skipped legacy interactive canvas tests. The skipped tests are marked in code because Playwright/Konva click stability regressed; this is documented as a test coverage limitation, not a product feature completion claim.
-- Browser QA through Playwright at `http://127.0.0.1:5174/`: smoke coverage passed for app load and Simulation workflow availability. Full interactive canvas workflows are currently covered by unit/store tests until skipped Playwright tests are repaired.
+- `npm run build`: passed. Manual chunks avoid the previous large single-bundle warning.
+- `npm test -- --run`: 12 files passed, 74 tests passed.
+- `npm run test:e2e -- --workers=1`: 15 browser tests passed, 0 skipped.
+- Browser QA through Playwright at `http://127.0.0.1:5174/`: covered app load, Small Demo first load, manual canvas editing, object manipulation, validation/analytics, import/export, Mode B candidate apply, Hybrid lock preservation, one simple simulation cycle, always-visible canvas controls, wheel zoom, space-drag pan, workflow navigation, responsive drawers, and Simulation workflow availability.
 
 ## Completion Plan
 
@@ -122,6 +128,6 @@
 2. Add focus trap and Escape-close behavior to responsive drawers and dialogs.
 3. Improve candidate previews with thumbnail mini-maps.
 4. Add virtualized bin tables for very large rack configurations.
-5. Repair and re-enable the skipped interactive Playwright canvas workflow tests.
+5. Add richer collision scenarios for loaded multi-cell racks in browser E2E, beyond the current unit-level deterministic checks.
 6. Add MAPF planning only after the operational RMFS model remains stable across larger scenarios.
 7. Continue toward CAD/DXF import, 3D view, and cloud persistence in later passes.

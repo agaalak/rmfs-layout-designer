@@ -61,7 +61,7 @@ function ToolButton({ tool, label }: { tool: EditorTool; label: string }) {
 }
 
 export function TopToolbar({ layout, analytics, onNew, onGenerate, onHybrid, onImportExport, onAnalyticsSettings, onShortcuts, onStatus, onRunValidation, onRunAnalytics }: TopToolbarProps) {
-  const { setLayout, undo, redo, rotateSelected, deleteSelected, loadDemo, newLayout, candidateComparison, applySelectedCandidate } = useLayoutStore();
+  const { setLayout, undo, redo, rotateSelected, deleteSelected, loadSmallDemo, loadLargeDemo, newLayout, candidateComparison, applySelectedCandidate } = useLayoutStore();
   const dirty = useLayoutStore((state) => state.history.past.length > 0);
   const {
     zoomIn,
@@ -116,12 +116,22 @@ export function TopToolbar({ layout, analytics, onNew, onGenerate, onHybrid, onI
             <button
               className="toolbar-button"
               onClick={() => {
-                if (!confirmIfDirty("Load the demo layout and replace the current working layout?")) return;
-                loadDemo();
-                onStatus("Demo layout loaded");
+                if (!confirmIfDirty("Load the small demo layout and replace the current working layout?")) return;
+                loadSmallDemo();
+                onStatus("Small demo layout loaded");
               }}
             >
-              <Play data-icon="inline-start" /> Demo
+              <Play data-icon="inline-start" /> Small Demo
+            </button>
+            <button
+              className="toolbar-button"
+              onClick={() => {
+                if (!confirmIfDirty("Load the large stress demo and replace the current working layout?")) return;
+                loadLargeDemo();
+                onStatus("Large stress demo loaded");
+              }}
+            >
+              Large Demo
             </button>
             <button
               className="toolbar-button"

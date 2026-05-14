@@ -1,5 +1,5 @@
 import type { Direction, GridCell } from "../models/grid";
-import { allDirections, traversableCellTypes } from "../models/grid";
+import { allDirections, oppositeDirection, traversableCellTypes } from "../models/grid";
 import type { WarehouseLayout } from "../models/layout";
 import type { Rack } from "../models/rack";
 import type { RmfsWaypoint, WaypointType } from "../models/rmfsDomain";
@@ -18,6 +18,8 @@ export interface RoadGraph {
   nodes: Set<GraphNode>;
   adjacency: Map<GraphNode, GraphEdge[]>;
 }
+
+const terminalRoutingCellTypes = new Set(["PARKING", "CHARGING"]);
 
 function waypointTypeForCell(cellType: string): WaypointType {
   if (cellType === "QUEUE") return "queue";
@@ -59,9 +61,26 @@ export function buildRoadGraph(layout: WarehouseLayout): RoadGraph {
   const waypoints = buildRoutingWaypoints(layout);
   const nodes = new Set<GraphNode>(waypoints.keys());
   const adjacency = new Map<GraphNode, GraphEdge[]>();
+  const terminalConnectors = new Map<GraphNode, Direction>();
 
   for (const node of nodes) {
     adjacency.set(node, []);
+  }
+
+  for (const waypoint of waypoints.values()) {
+    const cell = cellMap.get(waypoint.waypointId);
+    if (!cell || !terminalRoutingCellTypes.has(cell.cellType)) continue;
+    const connector =
+      allDirections.find((direction) => {
+        const target = neighbor(waypoint.cell, direction);
+        const targetCell = cellMap.get(cellKey(target));
+        return targetCell && nodes.has(cellKey(target)) && !terminalRoutingCellTypes.has(targetCell.cellType);
+      }) ??
+      allDirections.find((direction) => {
+        const target = neighbor(waypoint.cell, direction);
+        return nodes.has(cellKey(target));
+      });
+    if (connector) terminalConnectors.set(waypoint.waypointId, connector);
   }
 
   const blockedEdges = new Set(
@@ -72,13 +91,18 @@ export function buildRoadGraph(layout: WarehouseLayout): RoadGraph {
 
   for (const waypoint of waypoints.values()) {
     const from = waypoint.waypointId;
+    const sourceCell = cellMap.get(from);
     for (const direction of waypoint.allowedDirections as Direction[]) {
+      const sourceConnector = terminalConnectors.get(from);
+      if (sourceCell && terminalRoutingCellTypes.has(sourceCell.cellType) && sourceConnector !== direction) continue;
       const cell = waypoint.cell;
       const target = neighbor(cell, direction);
       if (!inBounds(target, layout.grid)) continue;
       const to = cellKey(target);
       const targetCell = cellMap.get(to);
       if (!targetCell || !nodes.has(to)) continue;
+      const targetConnector = terminalConnectors.get(to);
+      if (terminalRoutingCellTypes.has(targetCell.cellType) && targetConnector !== oppositeDirection[direction]) continue;
       if (blockedEdges.has(`${from}>${to}`)) continue;
       adjacency.get(from)!.push({
         from,

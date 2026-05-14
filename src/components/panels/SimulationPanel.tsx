@@ -21,8 +21,10 @@ import {
   exportSimulationMetricsCsv,
   importSimulationConfigJson
 } from "../../importExport/exportSimulation";
-import { availableSkuSummary } from "../../simulation/inventory";
+import { availableSkuSummary, inventoryFromLayout } from "../../simulation/inventory";
 import { useSimulationStore } from "../../store/simulationStore";
+import { useLayoutStore } from "../../store/layoutStore";
+import { validateSimulationReadiness } from "../../validation/validateSimulationReadiness";
 import { cn } from "../../utils/cn";
 
 function number(event: ChangeEvent<HTMLInputElement>) {
@@ -47,6 +49,10 @@ export function SimulationPanel({ layout, display = "desktop" }: { layout: Wareh
     setConfig,
     initialize,
     generateTasks,
+    refreshInventorySnapshot,
+    generateOrdersFromInventory,
+    clearOrders,
+    clearInventorySnapshot,
     createManualTask,
     play,
     pause,
@@ -56,11 +62,22 @@ export function SimulationPanel({ layout, display = "desktop" }: { layout: Wareh
     setManualRack,
     setManualStation
   } = useSimulationStore();
+  const { populateSampleInventory, clearSampleInventory } = useLayoutStore();
   const [severityFilter, setSeverityFilter] = useState<SimulationEventSeverity | "all">("all");
   const [eventQuery, setEventQuery] = useState("");
   const [importMessage, setImportMessage] = useState("");
   const set = <K extends keyof SimulationConfig>(key: K, value: SimulationConfig[K]) => setConfig({ [key]: value } as Partial<SimulationConfig>);
   const skuSummary = availableSkuSummary(state.inventory);
+  const layoutInventory = inventoryFromLayout(layout);
+  const layoutSkuSummary = availableSkuSummary(layoutInventory);
+  const readiness = validateSimulationReadiness(layout);
+  const readinessItems = [
+    ["Layout", readiness.categories.layout],
+    ["Inventory", readiness.categories.inventory],
+    ["Stations", readiness.categories.stations],
+    ["Storage", readiness.categories.storage],
+    ["Simulation", readiness.categories.simulation]
+  ] as const;
   const activeOrders = state.orders.filter((order) => !["COMPLETED", "FAILED"].includes(order.status));
   const allOrders = [...state.orders, ...state.completedOrders, ...state.failedOrders];
   const setStrategy = <K extends keyof SimulationConfig>(key: K, value: SimulationConfig[K]) => setConfig({ [key]: value } as Partial<SimulationConfig>);
@@ -88,6 +105,12 @@ export function SimulationPanel({ layout, display = "desktop" }: { layout: Wareh
     .filter((event) => severityFilter === "all" || event.severity === severityFilter)
     .filter((event) => !eventQuery || event.robotId?.includes(eventQuery) || event.taskId?.includes(eventQuery) || event.entityId?.includes(eventQuery) || event.message.toLowerCase().includes(eventQuery.toLowerCase()))
     .slice(-120);
+  const autoFixReadiness = () => {
+    populateSampleInventory();
+    const fixedLayout = useLayoutStore.getState().history.present;
+    refreshInventorySnapshot(fixedLayout);
+    generateOrdersFromInventory(fixedLayout);
+  };
 
   return (
     <aside
@@ -120,6 +143,31 @@ export function SimulationPanel({ layout, display = "desktop" }: { layout: Wareh
         </div>
       </section>
 
+      <section className={cn("grid gap-2 rounded-md border p-2 text-xs", readiness.ready ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50")}>
+        <div className="flex items-center justify-between gap-2">
+          <div className="panel-title">Readiness</div>
+          <span className={readiness.ready ? "badge-stable" : "badge-experimental"}>{readiness.ready ? "Ready" : "Needs setup"}</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          {readinessItems.map(([label, messages]) => (
+            <div key={label} className="rounded border border-white/60 bg-white/70 p-2">
+              <div className="font-semibold">{label}</div>
+              <div className={messages.length === 0 ? "text-emerald-700" : "text-amber-800"}>
+                {messages.length === 0 ? "Ready" : messages[0]}
+              </div>
+            </div>
+          ))}
+        </div>
+        {!readiness.ready ? (
+          <button className="toolbar-button-primary justify-center" onClick={autoFixReadiness}>
+            Auto-fix inventory/orders
+          </button>
+        ) : null}
+        {readiness.categories.inventory.length > 0 ? (
+          <div className="text-amber-800">No SKU inventory exists. Populate rack bins or edit bin SKUs/quantities before generating operational tasks.</div>
+        ) : null}
+      </section>
+
       <section className="grid grid-cols-2 gap-2 rounded-md border border-border bg-slate-50 p-2 text-xs">
         <div className="col-span-2 panel-title">Metrics</div>
         <div><span className="text-muted-foreground">Time</span><div className="font-semibold">{state.simTimeSec.toFixed(1)}s</div></div>
@@ -146,6 +194,7 @@ export function SimulationPanel({ layout, display = "desktop" }: { layout: Wareh
           <div><span className="text-muted-foreground">Conflicts</span><div className="font-semibold">{state.metrics.reservationConflictCount}</div></div>
           <div><span className="text-muted-foreground">Replans</span><div className="font-semibold">{state.metrics.replanCount}</div></div>
           <div><span className="text-muted-foreground">Deadlocks</span><div className="font-semibold">{state.metrics.deadlockCount}</div></div>
+          <div><span className="text-muted-foreground">Prevented</span><div className="font-semibold">{state.metrics.runtimeCollisionPreventionCount}</div></div>
           <div><span className="text-muted-foreground">Wait time</span><div className="font-semibold">{state.metrics.totalWaitTimeSec.toFixed(1)}s</div></div>
           <div><span className="text-muted-foreground">Vertex res.</span><div className="font-semibold">{activeVertexReservations}</div></div>
           <div><span className="text-muted-foreground">Resource res.</span><div className="font-semibold">{activeResourceReservations}</div></div>
@@ -251,8 +300,28 @@ export function SimulationPanel({ layout, display = "desktop" }: { layout: Wareh
         <div className="panel-title">Orders & Inventory</div>
         <div className="grid grid-cols-3 gap-2 text-xs">
           <div><span className="text-muted-foreground">Orders</span><div className="font-semibold">{allOrders.length}</div></div>
-          <div><span className="text-muted-foreground">SKUs</span><div className="font-semibold">{skuSummary.length}</div></div>
+          <div><span className="text-muted-foreground">SKUs</span><div className="font-semibold">{skuSummary.length || layoutSkuSummary.length}</div></div>
           <div><span className="text-muted-foreground">Storage locs</span><div className="font-semibold">{state.storageLocations.length || layout.storageLocations.length}</div></div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <button className="toolbar-button justify-center" onClick={() => { populateSampleInventory(); refreshInventorySnapshot(useLayoutStore.getState().history.present); }}>
+            Populate Inventory
+          </button>
+          <button className="toolbar-button justify-center" onClick={() => generateOrdersFromInventory(layout)}>
+            Generate Orders
+          </button>
+          <button className="toolbar-button justify-center" onClick={() => refreshInventorySnapshot(layout)}>
+            Refresh Inventory
+          </button>
+          <button className="toolbar-button justify-center" onClick={clearOrders}>
+            Clear Orders
+          </button>
+          <button className="toolbar-button justify-center" onClick={() => { clearSampleInventory(); clearInventorySnapshot(); }}>
+            Clear Inventory
+          </button>
+          <button className="toolbar-button-primary justify-center" onClick={autoFixReadiness}>
+            Auto-fix Readiness
+          </button>
         </div>
         <div className="max-h-28 overflow-auto rounded border border-border bg-white text-xs">
           {allOrders.length === 0 ? <div className="p-2 text-muted-foreground">Generate tasks to create sample orders from available rack inventory.</div> : null}

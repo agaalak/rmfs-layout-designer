@@ -1,13 +1,13 @@
 # RMFS Behavior Audit
 
-Date: 2026-05-13
+Date: 2026-05-14
 
 ## Commands Run
 
 - `npm install` - passed
 - `npm run build` - passed
-- `npm test -- --run` - passed, final rerun 62 tests
-- `npm run test:e2e -- --workers=1` - passed, final rerun 11 tests
+- `npm test -- --run` - passed, latest rerun 74 tests
+- `npm run test:e2e -- --workers=1` - passed, latest rerun 15 tests
 - `npm run dev` - running on `http://127.0.0.1:5174`
 - In-app browser load check - passed, no console warnings/errors on initial load
 

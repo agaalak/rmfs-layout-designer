@@ -22,7 +22,7 @@ import { cellKey, manhattanMeters, parseCellKey } from "../utils/gridMath";
 import { rackOccupiedCells } from "../utils/rackFootprint";
 import { ensureStorageLocations } from "../utils/storageLocations";
 import { findNearestRotationZonePath, findPathToNearestRackApproach, findPathToStationQueue, nearestCompatibleStation } from "./pathPlanner";
-import { createReservationTable, reserveResource } from "./reservationTable";
+import { createReservationTable, reserveResource, type ReservationConflict } from "./reservationTable";
 import { inventoryFromLayout, pickInventory, replenishInventory, reserveInventory, applyPickToOrder } from "./inventory";
 import { generateSampleOrders } from "./orderGeneration";
 import { selectRackForOrderLine } from "./controllers/rackSelectionController";
@@ -31,6 +31,7 @@ import { selectStorageDestination } from "./controllers/rackStorageController";
 import { selectRobotForCell } from "./controllers/robotAssignmentController";
 import { reserveTaskRouteWithTrafficPolicy } from "./trafficController";
 import { applyDeadlockRecovery, detectDeadlocks } from "./deadlockDetector";
+import { applyCollisionGuard } from "./collisionRuntime";
 
 const robotColors: Record<RobotState, string> = {
   IDLE: "#64748b",
@@ -478,9 +479,21 @@ function activePathWithWaits(
   return reserveTaskRouteWithTrafficPolicy(layout, state, robot, task, route, config);
 }
 
+function isTemporaryDispatchConflict(robot: Robot, conflict?: ReservationConflict) {
+  if (!conflict) return false;
+  if (conflict.resourceId) return true;
+  if (conflict.robotId && conflict.robotId !== robot.robotId) return true;
+  return conflict.type === "vertex" || conflict.type === "edge";
+}
+
+function hasActiveTaskForStation(state: SimulationState, stationId: string) {
+  return state.tasks.some((task) => task.stationId === stationId && ["ASSIGNED", "IN_PROGRESS"].includes(task.status));
+}
+
 function assignTasks(layout: WarehouseLayout, state: SimulationState, config: SimulationConfig): SimulationState {
   let next = structuredClone(state) as SimulationState;
   const pending = [...next.tasks].filter((task) => task.status === "PENDING").sort((a, b) => b.priority - a.priority);
+  const unavailableRobotIds = new Set<string>();
   for (const task of pending) {
     const rack = layout.racks.find((item) => item.id === task.rackId);
     const station = layout.stations.find((item) => item.id === task.stationId);
@@ -500,7 +513,8 @@ function assignTasks(layout: WarehouseLayout, state: SimulationState, config: Si
       });
       continue;
     }
-    const robot = selectRobotForCell(layout, next.robots, rack.homeCell, config.robotAssignmentStrategy);
+    if (hasActiveTaskForStation(next, station.id)) continue;
+    const robot = selectRobotForCell(layout, next.robots, rack.homeCell, config.robotAssignmentStrategy, unavailableRobotIds);
     if (!robot) break;
     const routePlan = planTaskRoute(layout, robot, task);
     if (!routePlan) {
@@ -512,15 +526,15 @@ function assignTasks(layout: WarehouseLayout, state: SimulationState, config: Si
     const reservation = activePathWithWaits(layout, next, robot, task, routePlan, config);
     if (reservation.conflict) {
       const message = reservation.explanation ?? `Traffic reservation conflict for task ${task.taskId}.`;
-      const pairKey = reservation.conflict.robotId ? [robot.robotId, reservation.conflict.robotId].sort().join("__") : `${robot.robotId}__resource`;
+      const temporaryDispatchConflict = isTemporaryDispatchConflict(robot, reservation.conflict);
+      const logMessage =
+        reservation.blocked && temporaryDispatchConflict
+          ? `Task ${task.taskId} dispatch delayed for ${robot.robotId}: ${message}`
+          : message;
       next.trafficDiagnostics = {
         ...next.trafficDiagnostics,
         reservationConflictCount: next.trafficDiagnostics.reservationConflictCount + 1,
         replanCount: next.trafficDiagnostics.replanCount + reservation.replanAttempts,
-        repeatedConflictPairs: {
-          ...next.trafficDiagnostics.repeatedConflictPairs,
-          [pairKey]: (next.trafficDiagnostics.repeatedConflictPairs[pairKey] ?? 0) + 1
-        },
         lastConflicts: [
           ...next.trafficDiagnostics.lastConflicts,
           {
@@ -528,20 +542,24 @@ function assignTasks(layout: WarehouseLayout, state: SimulationState, config: Si
             robotId: robot.robotId,
             taskId: task.taskId,
             resourceId: reservation.conflict.resourceId,
-            message
+            message: logMessage
           }
         ].slice(-20)
       };
       next.eventLog = log(next.eventLog, {
         timeSec: next.simTimeSec,
-        severity: reservation.blocked ? "error" : "warning",
+        severity: reservation.blocked && !temporaryDispatchConflict ? "error" : "warning",
         entityType: "traffic",
         entityId: robot.robotId,
         robotId: robot.robotId,
         taskId: task.taskId,
         relatedIds: { conflictRobotId: reservation.conflict.robotId, resourceId: reservation.conflict.resourceId },
-        message
+        message: logMessage
       });
+      unavailableRobotIds.add(robot.robotId);
+      if (reservation.blocked && temporaryDispatchConflict) {
+        continue;
+      }
       if (reservation.blocked) {
         next.trafficDiagnostics.failedDueToTrafficCount += 1;
         next.tasks = next.tasks.map((item) => (item.taskId === task.taskId ? { ...item, status: "FAILED", failureReason: message } : item));
@@ -1010,6 +1028,7 @@ export function calculateSimulationMetrics(
     deadlockCount: diagnostics.deadlockCount,
     deadlockRecoveryCount: diagnostics.deadlockRecoveryCount,
     failedDueToTrafficCount: diagnostics.failedDueToTrafficCount,
+    runtimeCollisionPreventionCount: diagnostics.runtimeCollisionPreventionCount,
     averageQueueWaitTimeSec: 0,
     maxQueueWaitTimeSec: 0,
     loadedTravelDistanceM: 0,
@@ -1037,10 +1056,12 @@ export function stepSimulation(layout: WarehouseLayout, state: SimulationState, 
     simTimeSec: state.simTimeSec + deltaTimeSec
   };
   next = assignTasks(normalized, next, config);
+  const beforeMove = structuredClone(next) as SimulationState;
   next.robots = next.robots.map((robot) => {
     if (["MOVING_EMPTY", "MOVING_LOADED", "RETURNING_RACK"].includes(robot.state)) return advanceRobotOnPath(normalized, robot, deltaTimeSec);
     return robot;
   });
+  next = applyCollisionGuard(normalized, beforeMove, next, config);
   next = handleRobotTransitions(normalized, next, config);
   next = updateStationQueues(normalized, next, config);
   if (config.deadlockDetectionEnabled) {
