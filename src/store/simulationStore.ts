@@ -20,6 +20,8 @@ import {
 import { createReservationTable } from "../simulation/reservationTable";
 import { inventoryFromLayout } from "../simulation/inventory";
 import { generateSampleOrders } from "../simulation/orderGeneration";
+import { recordDebugEvent, recordDebugPerformance } from "../debug/debugStore";
+import { checkSimulationInvariants } from "../simulation/invariants";
 
 interface SimulationStoreState {
   config: SimulationConfig;
@@ -68,6 +70,21 @@ const initialState: SimulationState = {
   initialized: false
 };
 
+function recordInvariantIssues(layout: WarehouseLayout, state: SimulationState, phase: string) {
+  const issues = checkSimulationInvariants(layout, state);
+  for (const issue of issues.slice(0, 10)) {
+    recordDebugEvent({
+      category: "invariant",
+      severity: issue.severity,
+      message: `${phase}: ${issue.message}`,
+      source: "simulation.invariants",
+      context: { simulationTimeSec: state.simTimeSec },
+      details: { invariantId: issue.invariantId, entityIds: issue.entityIds }
+    });
+  }
+  return issues;
+}
+
 export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
   config: defaultSimulationConfig,
   state: initialState,
@@ -92,35 +109,42 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
       }));
       return errors;
     }
-    set((current) => ({
-      state: initializeSimulation(layout, { ...current.config, ...(layout.simulationConfig ?? {}) })
-    }));
+    set((current) => {
+      const state = initializeSimulation(layout, { ...current.config, ...(layout.simulationConfig ?? {}) });
+      recordInvariantIssues(layout, state, "initialize");
+      return { state };
+    });
     return [];
   },
   generateTasks: (layout) =>
     set((current) => {
       const work = current.state.initialized ? generateOperationalSimulationWork(layout, current.state, current.config) : undefined;
       const tasks = work?.tasks ?? generateSimulationTasks(layout, current.config, current.state.simTimeSec);
+      const nextState = {
+        ...current.state,
+        orders: [...current.state.orders, ...(work?.orders.filter((order) => order.status !== "FAILED") ?? [])],
+        failedOrders: [...current.state.failedOrders, ...(work?.failedOrders ?? [])],
+        operationalTasks: [...current.state.operationalTasks, ...(work?.operationalTasks ?? tasks.map((task) => ({ operationalTaskId: task.operationalTaskId ?? `op_${task.taskId}`, orderLineIds: task.orderLineIds ?? [], taskKind: "MOVE_RACK_TO_STATION" as const, rackId: task.rackId, stationId: task.stationId ?? "", status: "PLANNED" as const, timestamps: { plannedAtSec: current.state.simTimeSec } })))],
+        inventory: work?.inventory ?? current.state.inventory,
+        rackStates: work?.rackStates ?? current.state.rackStates,
+        storageLocationStates: work?.storageLocationStates ?? current.state.storageLocationStates,
+        tasks: [...current.state.tasks, ...tasks],
+        eventLog: work?.eventLog ?? [
+          ...current.state.eventLog,
+          ...tasks.map((task) => ({
+            timeSec: current.state.simTimeSec,
+            severity: "info" as const,
+            entityType: "task" as const,
+            taskId: task.taskId,
+            message: `Task ${task.taskId} created.`
+          }))
+        ].slice(-500)
+      };
+      recordInvariantIssues(layout, nextState, "generateTasks");
       return {
         state: {
-          ...current.state,
-          orders: [...current.state.orders, ...(work?.orders.filter((order) => order.status !== "FAILED") ?? [])],
-          failedOrders: [...current.state.failedOrders, ...(work?.failedOrders ?? [])],
-          operationalTasks: [...current.state.operationalTasks, ...(work?.operationalTasks ?? tasks.map((task) => ({ operationalTaskId: task.operationalTaskId ?? `op_${task.taskId}`, orderLineIds: task.orderLineIds ?? [], taskKind: "MOVE_RACK_TO_STATION" as const, rackId: task.rackId, stationId: task.stationId ?? "", status: "PLANNED" as const, timestamps: { plannedAtSec: current.state.simTimeSec } })))],
-          inventory: work?.inventory ?? current.state.inventory,
-          rackStates: work?.rackStates ?? current.state.rackStates,
-          storageLocationStates: work?.storageLocationStates ?? current.state.storageLocationStates,
-          tasks: [...current.state.tasks, ...tasks],
-          eventLog: work?.eventLog ?? [
-            ...current.state.eventLog,
-            ...tasks.map((task) => ({
-              timeSec: current.state.simTimeSec,
-              severity: "info" as const,
-              entityType: "task" as const,
-              taskId: task.taskId,
-              message: `Task ${task.taskId} created.`
-            }))
-          ].slice(-500)
+          ...nextState,
+          eventLog: nextState.eventLog
         }
       };
     }),
@@ -218,9 +242,14 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
   play: () => set((current) => ({ state: { ...current.state, isRunning: true } })),
   pause: () => set((current) => ({ state: { ...current.state, isRunning: false } })),
   step: (layout, deltaTimeSec = 0.25) =>
-    set((current) => ({
-      state: stepSimulation(layout, current.state, current.config, deltaTimeSec * current.state.speedMultiplier)
-    })),
+    set((current) => {
+      const start = typeof performance !== "undefined" ? performance.now() : Date.now();
+      const state = stepSimulation(layout, current.state, current.config, deltaTimeSec * current.state.speedMultiplier);
+      const end = typeof performance !== "undefined" ? performance.now() : Date.now();
+      recordDebugPerformance("simulation.step", end - start, { simTimeSec: state.simTimeSec, robots: state.robots.length, tasks: state.tasks.length });
+      recordInvariantIssues(layout, state, "step");
+      return { state };
+    }),
   reset: () => set((current) => ({ state: resetSimulation(current.config) })),
   setSpeedMultiplier: (speedMultiplier) => set((current) => ({ state: { ...current.state, speedMultiplier } })),
   setManualRack: (manualRackId) => set({ manualRackId }),

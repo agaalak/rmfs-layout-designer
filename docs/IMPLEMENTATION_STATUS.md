@@ -43,6 +43,11 @@
 - Traffic Control diagnostics section in Experimental Simulation Mode showing conflicts, waits, replans, deadlocks, active reservations, blocked/waiting robots, and traffic policy settings.
 - Carried-rack collision envelope module with unloaded/loaded robot envelopes, rectangular rack rotation support, blocked-cell/static-rack overlap detection, and reservation footprint conversion.
 - Runtime collision guard that checks simulation state after movement, prevents accepted same-cell, edge-swap, loaded-envelope, stored-rack, and blocked-cell overlaps, rolls unsafe moves back, and logs collision-prevented warning events.
+- Built-in Debug / QA panel opened from the app header or `Ctrl+Shift+D`, with console/runtime capture, user action recording, simulation/traffic/controller event mirrors, performance samples, diagnostics export, and issue report export.
+- Top-level React ErrorBoundary that captures render failures into the debug store and displays a user-friendly fallback instead of leaving a blank app.
+- `window.__RMFS_DEBUG__` live diagnostics API and `window.__RMFS_TEST__` dev/test state inspection hook.
+- Simulation invariant checker for robot envelope overlaps, invalid rack/storage ownership, duplicate active rack assignment, order over-fulfillment, queue overflow, invalid task references, invalid route cells, and invalid reservations.
+- Controller strategy registry with descriptions and decision traces for order, rack, station, robot, storage, charging, path planning, and traffic-control strategy decisions.
 - Resource reservation support for rotation zones, station queue slots, station service, storage locations, chargers, and parking.
 - Conservative deadlock detector and recovery hook for repeated conflict pairs and robots blocked beyond configured thresholds.
 - Deterministic simulation scenario runner for non-browser regression tests.
@@ -64,6 +69,7 @@
 - Fast Playwright smoke suite for startup, workflow navigation, and responsive drawer checks.
 - README explaining RMFS concepts, modes, analytics, validation, import/export, limitations, and roadmap.
 - UI/UX guidelines, UX audit, and performance notes documenting workflow structure and future contributor rules.
+- Current-state audit, RAWSim-O behavior gap audit, issue backlog, architecture review, performance/robustness audit, live QA debugging guide, and live testing protocol.
 
 ## Partially Implemented
 
@@ -118,8 +124,9 @@
 
 - `npm install`: passed, 0 vulnerabilities.
 - `npm run build`: passed. Manual chunks avoid the previous large single-bundle warning.
-- `npm test -- --run`: 12 files passed, 74 tests passed.
-- `npm run test:e2e -- --workers=1`: 15 browser tests passed, 0 skipped.
+- `npm test -- --run`: 13 files passed, 82 tests passed.
+- `npm run test:e2e -- e2e/debug-qa.spec.ts --workers=1`: 3 debug/QA browser tests passed.
+- `npm run test:e2e -- --workers=1`: 18 browser tests passed, 0 skipped.
 - Browser QA through Playwright at `http://127.0.0.1:5174/`: covered app load, Small Demo first load, manual canvas editing, object manipulation, validation/analytics, import/export, Mode B candidate apply, Hybrid lock preservation, one simple simulation cycle, always-visible canvas controls, wheel zoom, space-drag pan, workflow navigation, responsive drawers, and Simulation workflow availability.
 
 ## Completion Plan
@@ -129,5 +136,6 @@
 3. Improve candidate previews with thumbnail mini-maps.
 4. Add virtualized bin tables for very large rack configurations.
 5. Add richer collision scenarios for loaded multi-cell racks in browser E2E, beyond the current unit-level deterministic checks.
-6. Add MAPF planning only after the operational RMFS model remains stable across larger scenarios.
-7. Continue toward CAD/DXF import, 3D view, and cloud persistence in later passes.
+6. Refactor `simulationEngine.ts` and `SimulationPanel.tsx` before adding WHCA-style MAPF-lite.
+7. Add MAPF planning only after the operational RMFS model remains stable across larger scenarios.
+8. Continue toward CAD/DXF import, 3D view, and cloud persistence in later passes.

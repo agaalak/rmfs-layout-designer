@@ -29,6 +29,7 @@ import { selectRackForOrderLine } from "./controllers/rackSelectionController";
 import { selectStationForRack } from "./controllers/stationAssignmentController";
 import { selectStorageDestination } from "./controllers/rackStorageController";
 import { selectRobotForCell } from "./controllers/robotAssignmentController";
+import { makeControllerDecisionTrace } from "./controllers/controllerRegistry";
 import { reserveTaskRouteWithTrafficPolicy } from "./trafficController";
 import { applyDeadlockRecovery, detectDeadlocks } from "./deadlockDetector";
 import { applyCollisionGuard } from "./collisionRuntime";
@@ -359,9 +360,51 @@ export function generateOperationalSimulationWork(layout: WarehouseLayout, state
     operationalTasks.push(createOperationalTaskForTask(task, state.simTimeSec));
     eventLog.push(
       { timeSec: state.simTimeSec, severity: "info", entityType: "order", entityId: order.orderId, taskId: task.taskId, message: `Order ${order.orderId} created for ${line.quantity} x ${line.sku}.` },
-      { timeSec: state.simTimeSec, severity: "info", entityType: "controller", entityId: "rackSelection", taskId: task.taskId, message: `Rack ${selectedRack.rack.rackId} selected for SKU ${line.sku}.` },
-      { timeSec: state.simTimeSec, severity: "info", entityType: "controller", entityId: "stationAssignment", taskId: task.taskId, message: `Station ${station.stationId} selected for order ${order.orderId}.` },
-      { timeSec: state.simTimeSec, severity: "info", entityType: "controller", entityId: "rackStorage", taskId: task.taskId, message: `Destination storage ${task.destinationStorageLocationId ?? "home"} selected for rack ${selectedRack.rack.rackId}.` }
+      {
+        timeSec: state.simTimeSec,
+        severity: "info",
+        entityType: "controller",
+        entityId: "rackSelection",
+        taskId: task.taskId,
+        message: `Rack ${selectedRack.rack.rackId} selected for SKU ${line.sku}.`,
+        details: { ...makeControllerDecisionTrace({
+          controller: "rack_selection",
+          strategy: config.rackSelectionStrategy,
+          candidateCount: inventory.filter((item) => item.sku === line.sku && item.quantity - (item.reservedQuantity ?? 0) >= line.quantity).length,
+          selectedCandidateId: selectedRack.rack.id,
+          reason: selectedRack.reason ?? `Selected rack with available ${line.sku} inventory.`
+        }) }
+      },
+      {
+        timeSec: state.simTimeSec,
+        severity: "info",
+        entityType: "controller",
+        entityId: "stationAssignment",
+        taskId: task.taskId,
+        message: `Station ${station.stationId} selected for order ${order.orderId}.`,
+        details: { ...makeControllerDecisionTrace({
+          controller: "station_assignment",
+          strategy: config.stationAssignmentStrategy,
+          candidateCount: normalized.stations.length,
+          selectedCandidateId: station.id,
+          reason: `Selected compatible ${station.stationType} station.`
+        }) }
+      },
+      {
+        timeSec: state.simTimeSec,
+        severity: "info",
+        entityType: "controller",
+        entityId: "rackStorage",
+        taskId: task.taskId,
+        message: `Destination storage ${task.destinationStorageLocationId ?? "home"} selected for rack ${selectedRack.rack.rackId}.`,
+        details: { ...makeControllerDecisionTrace({
+          controller: "rack_storage",
+          strategy: config.rackStorageStrategy,
+          candidateCount: normalized.storageLocations.length,
+          selectedCandidateId: task.destinationStorageLocationId,
+          reason: `Selected destination using ${config.rackStorageStrategy}.`
+        }) }
+      }
     );
     generatedOrders[orderIndex] = assignedOrder;
   }
@@ -636,7 +679,22 @@ function assignTasks(layout: WarehouseLayout, state: SimulationState, config: Si
       operationalStatus: "RESERVED",
       activeTaskId: task.taskId
     };
-    next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "info", entityType: "controller", entityId: "robotAssignment", robotId: robot.robotId, taskId: task.taskId, message: `Task ${task.taskId} assigned to ${robot.robotId}.` });
+    next.eventLog = log(next.eventLog, {
+      timeSec: next.simTimeSec,
+      severity: "info",
+      entityType: "controller",
+      entityId: "robotAssignment",
+      robotId: robot.robotId,
+      taskId: task.taskId,
+      message: `Task ${task.taskId} assigned to ${robot.robotId}.`,
+      details: { ...makeControllerDecisionTrace({
+        controller: "robot_assignment",
+        strategy: config.robotAssignmentStrategy,
+        candidateCount: next.robots.filter((item) => ["IDLE", "PARKING", "CHARGING"].includes(item.state) && !item.assignedTaskId).length,
+        selectedCandidateId: robot.robotId,
+        reason: `Selected robot using ${config.robotAssignmentStrategy}.`
+      }) }
+    });
   }
   return next;
 }

@@ -59,6 +59,8 @@ This pass adds:
 - Traffic Control diagnostics in Simulation Mode
 - runtime collision guard in `src/simulation/collisionRuntime.ts`
 - deterministic collision scenarios in `src/simulation/scenarios/collisionScenarios.ts`
+- simulation invariant checks in `src/simulation/invariants.ts`
+- Debug / QA diagnostics for traffic, resource, deadlock, controller, and invariant events
 
 ## Verification Status
 
@@ -75,6 +77,7 @@ This pass adds:
 - Loaded swept envelopes are cell-based, not continuous geometry.
 - Rotation-zone and station resources use simple capacity counts.
 - This is still not full MAPF. Dense/high-robot scenarios can still block or fail lower-priority tasks conservatively.
+- The Debug / QA panel helps explain blocking and prevented collisions but does not itself solve traffic.
 
 ## Next Steps
 

@@ -219,6 +219,32 @@ Current implementation:
 - `src/simulation/controllers/robotAssignmentController.ts`
 - `src/simulation/controllers/rackStorageController.ts`
 - `src/simulation/controllers/chargingController.ts`
+- `src/simulation/controllers/controllerRegistry.ts`
+
+The controller registry records strategy name, description, stage, limitations, and metrics affected. Simulation controller events now include decision traces with candidate counts, selected candidates, and reason strings where available. This is not a full experiment runner yet, but it is the first step toward RAWSim-O-style decision-rule comparison.
+
+## Current Gap Audit
+
+See `docs/RAWSIMO_BEHAVIOR_GAP_AUDIT.md` for the full matrix. The important gaps are:
+
+- Path planning is still shortest-path plus reservations/runtime guards, not WHCA*/CBS/MAPF.
+- Waypoints are derived from layout resources rather than persisted and directly editable.
+- Rack, station, and robot lifecycle logic works but should be split into explicit state-machine modules.
+- Pick/replenishment logic has inventory updates but not full wave, due-time, returns, and multi-rack partial fulfillment behavior.
+- Battery drain, charger queues, and long-horizon fleet policies are intentionally deferred.
+- Metrics are useful for layout and debug feedback, but not yet a complete RAWSim-O experiment statistics layer.
+
+## Debug And Invariants
+
+The app now includes a live Debug / QA mode:
+
+- `src/debug/*`
+- `src/components/debug/DebugPanel.tsx`
+- `src/components/debug/ErrorBoundary.tsx`
+- `src/simulation/invariants.ts`
+
+This matters for RMFS alignment because state errors in robot/rack/station/order interactions are often invisible until a later step. Invariants check resource ownership and illegal overlaps after initialization, task generation, and simulation steps in development/debug contexts.
+- `src/simulation/controllers/chargingController.ts`
 
 Strategies are intentionally simple, but explicit: FIFO/priority/due-date order selection, nearest/most-inventory/hot-weighted rack selection, nearest/shortest-queue station selection, first/nearest robot assignment, return-home/nearest/hot-near-station storage selection, and no-op/low-battery charging policy.
 

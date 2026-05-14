@@ -23,6 +23,9 @@ Latest build output shape:
 - Isolated simulation controls in Simulation workflow, reducing normal Design UI rendering pressure.
 - Reduced always-on right-panel noise by moving broad analytics/validation out of Design properties.
 - Added a smoke E2E script (`npm run test:e2e:smoke`) that checks startup, workflow navigation, and responsive drawers without running the full editor/simulation suite.
+- Added capped debug event and performance-sample logs so live diagnostics do not grow without bound.
+- Added simulation step timing samples visible in Debug / QA.
+- Added invariant checks in development/debug contexts to catch corrupt state early.
 
 ## Remaining Risks
 
@@ -31,6 +34,8 @@ Latest build output shape:
 - Rack bin tables are scrollable but not virtualized.
 - Konva canvas layers are still all mounted in the main canvas. This is fine now, but future simulation growth may need more memoization.
 - The smoke E2E suite is faster than the full suite but still exercises a heavy Konva/Vite page. More speed will require test fixture slimming or mocked layout loading.
+- Debug/invariant instrumentation adds overhead in development and `?debug=true` sessions. Keep it enabled while testing correctness, but use normal production mode for pure performance profiling.
+- The app chunk grew after live QA instrumentation; future work should lazy-load Debug / QA and Simulation panels.
 
 ## Recommended Next Steps
 
@@ -39,3 +44,5 @@ Latest build output shape:
 3. Virtualize the rack bin table for large rack definitions.
 4. Memoize graph construction by layout revision/hash instead of rebuilding from object identity.
 5. Add lightweight candidate mini-map generation that does not mount full Konva stages.
+6. Split `simulationEngine.ts` before adding WHCA-style planning.
+7. Add a dedicated long-run stress command separate from normal E2E.

@@ -68,6 +68,16 @@ Color should never be the only state indicator. Pair color with text, badges, ou
 - Dialogs should support Escape-close and should avoid trapping focus incorrectly.
 - Disabled controls need a tooltip/title explaining why.
 
+## Debug / QA UX
+
+- Debug / QA is a diagnostic drawer, not a primary workflow.
+- The `?debug=true` URL flag should enable diagnostics without opening the drawer automatically.
+- The drawer opens through the app-header Debug / QA button or `Ctrl+Shift+D`.
+- Keep the drawer close button visible and keyboard reachable.
+- Do not let the drawer silently intercept the app during normal testing; close it before interacting with controls underneath.
+- Issue report export must be local-only and clearly labeled.
+- Console/runtime errors should be visible in the panel, but users should still be able to recover or export diagnostics.
+
 ## Responsive Rules
 
 - Desktop is the primary editing experience.

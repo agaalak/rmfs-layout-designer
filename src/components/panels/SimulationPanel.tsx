@@ -26,6 +26,7 @@ import { useSimulationStore } from "../../store/simulationStore";
 import { useLayoutStore } from "../../store/layoutStore";
 import { validateSimulationReadiness } from "../../validation/validateSimulationReadiness";
 import { cn } from "../../utils/cn";
+import { getControllerStrategyDescription } from "../../simulation/controllers/controllerRegistry";
 
 function number(event: ChangeEvent<HTMLInputElement>) {
   return Number(event.target.value);
@@ -294,6 +295,15 @@ export function SimulationPanel({ layout, display = "desktop" }: { layout: Wareh
             <option value="low_battery_to_nearest_charger">Low battery to charger</option>
           </select>
         </Field>
+        <div className="col-span-2 rounded-md border border-teal-100 bg-teal-50 p-2 text-xs text-teal-900">
+          <div className="font-semibold">Current decision trace context</div>
+          <ul className="mt-1 grid gap-1">
+            <li>Rack: {getControllerStrategyDescription(config.rackSelectionStrategy)}</li>
+            <li>Station: {getControllerStrategyDescription(config.stationAssignmentStrategy)}</li>
+            <li>Robot: {getControllerStrategyDescription(config.robotAssignmentStrategy)}</li>
+            <li>Storage: {getControllerStrategyDescription(config.rackStorageStrategy)}</li>
+          </ul>
+        </div>
       </section>
 
       <section className="grid gap-2 rounded-md border border-border bg-slate-50 p-2">

@@ -170,6 +170,27 @@ RAWSim-O is a discrete-event simulation framework for RMFS decision strategies, 
 
 Current implementation is still layout-editor first, but Experimental Simulation Mode now includes simplified orders, inventory-backed rack selection, operational tasks, rack/storage state, station service inventory updates, and rack storage/reallocation strategies. See [docs/RMFS_OPERATION_MODEL.md](docs/RMFS_OPERATION_MODEL.md) for the operational model.
 
+The current RAWSim-O behavior gap audit is in [docs/RAWSIMO_BEHAVIOR_GAP_AUDIT.md](docs/RAWSIMO_BEHAVIOR_GAP_AUDIT.md), and the prioritized backlog is in [docs/ISSUE_BACKLOG.md](docs/ISSUE_BACKLOG.md). The largest deliberate gap is still path planning: the app has practical reservations, runtime collision guards, and deadlock reporting, but it does not yet implement WHCA*, CBS, or a full MAPF benchmark layer.
+
+## Debug / QA Mode
+
+The app includes a live Debug / QA panel for user testing and developer inspection.
+
+Open it with:
+
+- the Debug / QA button in the app header
+- `Ctrl+Shift+D`
+- `?debug=true` in the URL to ensure diagnostics are installed
+
+The panel captures console errors/warnings, React render errors, unhandled promise rejections, user actions, simulation events, traffic/collision/deadlock events, invariant issues, and recent performance samples. It can export diagnostics JSON and an issue report JSON/Markdown bundle without sending anything to a server.
+
+Dev/debug builds expose:
+
+- `window.__RMFS_DEBUG__` for diagnostics, state snapshots, recent actions, recent errors, and exports
+- `window.__RMFS_TEST__` for deterministic browser tests and emergency state inspection
+
+See [docs/LIVE_QA_DEBUGGING.md](docs/LIVE_QA_DEBUGGING.md) and [docs/LIVE_TESTING_PROTOCOL.md](docs/LIVE_TESTING_PROTOCOL.md).
+
 ## Import And Export
 
 Exported layout JSON includes `layoutSchemaVersion`, `appVersion`, timestamps, grid settings, cells, objects, rack faces/bins, assumptions, scoring weights, and metadata. The current schema is `0.2.0`.

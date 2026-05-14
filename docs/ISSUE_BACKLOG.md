@@ -1,0 +1,107 @@
+# Issue Backlog
+
+Date: 2026-05-14
+
+This backlog collects correctness, architecture, performance, UX, testing, and observability issues found during the RAWSim-O/RMFS alignment and live QA pass. It is intentionally broader than a feature list.
+
+Statuses: open, in progress, fixed, deferred.
+
+## Simulation Correctness
+
+| ID | Title | Severity | Status | Source / Repro | Expected | Actual / Risk | Likely Files | Proposed Fix | Tests |
+|---|---|---:|---|---|---|---|---|---|---|
+| SIM-P0-001 | Traffic control is not full MAPF | P0/P1 | deferred | Run dense robot/order scenarios | Collision/deadlock-free plans with bounded recovery | Current shortest-path + reservations can still block conservatively | `src/simulation/pathPlanner.ts`, `trafficController.ts` | Add WHCA-style rolling horizon before CBS | Scenario runner + E2E stress |
+| SIM-P1-002 | Station dispatch is conservative | P1 | open | Multiple orders to one pick station | Queue capacity predicted without starving valid work | Dispatch favors safety and may underuse station queues | `simulationEngine.ts`, `stationAssignmentController.ts` | Queue-aware station reservation horizon | Queue saturation unit/E2E |
+| SIM-P1-003 | Invariant failures should optionally pause simulation | P1 | open | Force duplicate rack assignment in debug mode | Debug mode pauses or clearly gates continuation | Invariants log but do not always stop playback | `simulationStore.ts`, `invariants.ts` | Add config flag `pauseOnInvariantViolation` | Invariant pause test |
+| SIM-P2-004 | Battery and charging lifecycle incomplete | P2 | deferred | Long simulation with chargers | Robots drain battery and choose chargers | Battery is mostly static | `robot.ts`, `chargingController.ts` | Add drain/charge policy after traffic stabilizes | Battery lifecycle tests |
+
+## Robot Collision / Traffic
+
+| ID | Title | Severity | Status | Source / Repro | Expected | Actual / Risk | Likely Files | Proposed Fix | Tests |
+|---|---|---:|---|---|---|---|---|---|---|
+| TRAF-P1-001 | Runtime guard lacks continuous swept geometry | P1 | open | Loaded rack turning near obstacle | No overlap along the swept path | Current check is cell-step based | `collisionRuntime.ts`, `collisionEnvelope.ts` | Add swept cell union per segment | Narrow-aisle loaded rack tests |
+| TRAF-P1-002 | Deadlock recovery is conservative | P1 | open | One-cell corridor opposing robots | Backoff/replan to safe pocket when available | Recovery mostly clears reservations/marks blocked | `deadlockDetector.ts`, `trafficController.ts` | Add safe-wait-cell search | Deadlock recovery scenario |
+| TRAF-P2-003 | Reservation horizon needs UI warning | P2 | open | Very low/high horizon values | Config warns when horizon is too short/long | Values can be confusing | `SimulationPanel.tsx` | Add inline readiness warning | Component test |
+
+## Rack / Pod Lifecycle
+
+| ID | Title | Severity | Status | Source / Repro | Expected | Actual / Risk | Likely Files | Proposed Fix | Tests |
+|---|---|---:|---|---|---|---|---|---|---|
+| RACK-P1-001 | Rack state transitions are distributed | P1 | open | Inspect `simulationEngine.ts` | Dedicated state machine owns transitions | Transition logic is spread across engine branches | `simulationEngine.ts` | Extract `rackLifecycle.ts` | Transition table tests |
+| RACK-P1-002 | Home vs current storage policy needs clearer semantics | P1 | open | `nearest_available_storage` strategy | User can tell whether home changes | Current strategy can update current destination without full policy UI | `rackStorageController.ts`, docs | Add explicit `updateHomeAfterReallocation` setting | Storage strategy tests |
+
+## Station Behavior
+
+| ID | Title | Severity | Status | Source / Repro | Expected | Actual / Risk | Likely Files | Proposed Fix | Tests |
+|---|---|---:|---|---|---|---|---|---|---|
+| STN-P1-001 | Partial fulfillment is thin | P1 | open | Order quantity exceeds selected bin quantity | Order line becomes SHORT or selects additional rack | Current path is simple single-rack fulfillment | `inventory.ts`, `simulationEngine.ts` | Support multi-rack order lines | Shortage tests |
+| STN-P2-002 | Pack/QC/buffer behavior is dwell-only | P2 | deferred | Use PACK/QC station | Correct workflow semantics by station type | Service does not model downstream process | `station.ts`, `simulationEngine.ts` | Add process-specific event hooks later | Station type tests |
+
+## Inventory / Order Behavior
+
+| ID | Title | Severity | Status | Source / Repro | Expected | Actual / Risk | Likely Files | Proposed Fix | Tests |
+|---|---|---:|---|---|---|---|---|---|---|
+| INV-P1-001 | Reserved quantity should be globally audited | P1 | in progress | Generate overlapping orders | Reserved <= available per bin | Invariants now catch many violations; controller still simple | `invariants.ts`, `rackSelectionController.ts` | Expand reservation map by bin/order | Duplicate reservation tests |
+| INV-P2-002 | Order waves and due times missing | P2 | deferred | Generate sample orders | Wave/due-time simulation options | Orders are immediate sample demand | `orderGeneration.ts` | Add wave generator later | Due-time tests |
+
+## Path Planning / MAPF Readiness
+
+| ID | Title | Severity | Status | Source / Repro | Expected | Actual / Risk | Likely Files | Proposed Fix | Tests |
+|---|---|---:|---|---|---|---|---|---|---|
+| PATH-P1-001 | Waypoints are derived, not persisted/editable | P1 | open | Import/export layout graph | Persisted graph/waypoint debugging | Graph is rebuilt from cells/resources | `graphBuilder.ts`, `layout.ts` | Add optional waypoint snapshot/debug export | Graph roundtrip tests |
+| PATH-P1-002 | WHCA-style planner absent | P1 | deferred | Multi-robot corridor | Rolling time-window planning | Current reservation repair is local | `pathPlanner.ts`, `trafficController.ts` | Add MAPF-lite module next pass | WHCA scenario tests |
+
+## Layout Generation
+
+| ID | Title | Severity | Status | Source / Repro | Expected | Actual / Risk | Likely Files | Proposed Fix | Tests |
+|---|---|---:|---|---|---|---|---|---|---|
+| GEN-P2-001 | Flying-V remains experimental | P2 | deferred | Generate true Flying-V | Connected, scoreable, reliable family | Works visually but not stress-proven | `flyingVGenerator.ts` | Keep badge; add more candidates/tests later | Flying-V stress E2E |
+
+## UI / UX
+
+| ID | Title | Severity | Status | Source / Repro | Expected | Actual / Risk | Likely Files | Proposed Fix | Tests |
+|---|---|---:|---|---|---|---|---|---|---|
+| UX-P1-001 | Debug panel can block app if auto-opened | P1 | fixed | `/?debug=true` then click controls | Debug available but not obstructing until opened | Panel originally opened immediately | `debugStore.ts` | Default closed; open via toolbar/shortcut | Debug E2E |
+| UX-P2-002 | Dialog/drawer focus trap needs hardening | P2 | open | Keyboard through drawers/dialogs | Escape/focus loop predictable | Some custom panels are not fully trapped | `components/dialogs/*`, panels | Add shared dialog primitive | A11y tests |
+
+## Performance
+
+| ID | Title | Severity | Status | Source / Repro | Expected | Actual / Risk | Likely Files | Proposed Fix | Tests |
+|---|---|---:|---|---|---|---|---|---|---|
+| PERF-P1-001 | Simulation engine remains large/hot | P1 | open | Long playback profile | State machine modules with measured step time | Engine branches are large | `simulationEngine.ts` | Split lifecycle modules | Unit regression |
+| PERF-P1-002 | Event logs can grow during long sessions | P1 | fixed | Long simulation/debug session | Logs capped and exportable | Debug store now caps logs; sim event cap still needs monitoring | `debugStore.ts`, `simulationStore.ts` | Keep caps and performance samples | Log cap tests |
+
+## Testing
+
+| ID | Title | Severity | Status | Source / Repro | Expected | Actual / Risk | Likely Files | Proposed Fix | Tests |
+|---|---|---:|---|---|---|---|---|---|---|
+| TEST-P1-001 | Live QA debug needed browser coverage | P1 | fixed | Ctrl+Shift+D/report export | E2E proves panel and exports work | Added `debug-qa.spec.ts` | `e2e/debug-qa.spec.ts` | Keep in full E2E suite | Full E2E |
+| TEST-P2-002 | Large stress tests are not routine | P2 | open | Large Demo, 20+ orders | Repeatable nightly/perf scenario | Full suite stays small for runtime | `scenarioRunner.ts` | Add optional stress script | Stress command |
+
+## Debugging / Observability
+
+| ID | Title | Severity | Status | Source / Repro | Expected | Actual / Risk | Likely Files | Proposed Fix | Tests |
+|---|---|---:|---|---|---|---|---|---|---|
+| DBG-P1-001 | Need live diagnostics while user tests | P1 | fixed | User reports issue while app running | Export actions/errors/state/simulation snapshot | Added Debug / QA panel and globals | `src/debug/*`, `DebugPanel.tsx` | Iterate from real reports | Debug E2E |
+| DBG-P2-002 | Issue report screenshot capture is not yet embedded | P2 | open | Export issue report | Optional current screenshot included | Report exports state/logs but not screenshot binary | `diagnosticsExport.ts` | Add canvas/browser screenshot hook later | Report test |
+
+## Modularity / Architecture
+
+| ID | Title | Severity | Status | Source / Repro | Expected | Actual / Risk | Likely Files | Proposed Fix | Tests |
+|---|---|---:|---|---|---|---|---|---|---|
+| ARCH-P1-001 | `simulationEngine.ts` has too many responsibilities | P1 | open | Architecture review | Engine orchestrates modules; modules own behavior | File mixes assignment, route execution, service, metrics | `simulationEngine.ts` | Split into lifecycle modules | Existing simulation tests |
+| ARCH-P1-002 | `SimulationPanel.tsx` is too broad | P1 | open | Architecture review | Focused tab components | Panel contains setup/orders/controllers/tasks/events | `SimulationPanel.tsx` | Split panel tabs | Component tests |
+
+## Import / Export / Schema
+
+| ID | Title | Severity | Status | Source / Repro | Expected | Actual / Risk | Likely Files | Proposed Fix | Tests |
+|---|---|---:|---|---|---|---|---|---|---|
+| SCHEMA-P1-001 | Simulation snapshot export should include invariant report | P1 | in progress | Export snapshot in debug mode | Snapshot says whether state is valid | Diagnostics bundle includes invariants/events, not a formal snapshot schema | `diagnosticsExport.ts`, `invariants.ts` | Add `invariantSummary` top-level | Diagnostics tests |
+
+## Accessibility / Documentation
+
+| ID | Title | Severity | Status | Source / Repro | Expected | Actual / Risk | Likely Files | Proposed Fix | Tests |
+|---|---|---:|---|---|---|---|---|---|---|
+| A11Y-P2-001 | Some icon-only/debug controls need focus review | P2 | open | Keyboard navigation | Visible focus and aria labels everywhere | Main controls covered; deeper panel review needed | UI components | Run axe/manual keyboard audit | A11y test |
+| DOC-P1-001 | Docs must separate implemented vs experimental | P1 | fixed | README/status review | No overclaiming full MAPF/RAWSim-O parity | Updated docs now mark gaps and experimental scope | `docs/*`, `README.md` | Continue after each pass | Documentation review |
+

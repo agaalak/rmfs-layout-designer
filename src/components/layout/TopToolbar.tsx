@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  Bug,
   CheckCircle2,
   Download,
   Eye,
@@ -38,6 +39,7 @@ interface TopToolbarProps {
   onImportExport: () => void;
   onAnalyticsSettings: () => void;
   onShortcuts: () => void;
+  onDebug: () => void;
   onStatus: (message: string) => void;
   onRunValidation: () => void;
   onRunAnalytics: () => void;
@@ -60,7 +62,7 @@ function ToolButton({ tool, label }: { tool: EditorTool; label: string }) {
   );
 }
 
-export function TopToolbar({ layout, analytics, onNew, onGenerate, onHybrid, onImportExport, onAnalyticsSettings, onShortcuts, onStatus, onRunValidation, onRunAnalytics }: TopToolbarProps) {
+export function TopToolbar({ layout, analytics, onNew, onGenerate, onHybrid, onImportExport, onAnalyticsSettings, onShortcuts, onDebug, onStatus, onRunValidation, onRunAnalytics }: TopToolbarProps) {
   const { setLayout, undo, redo, rotateSelected, deleteSelected, loadSmallDemo, loadLargeDemo, newLayout, candidateComparison, applySelectedCandidate } = useLayoutStore();
   const dirty = useLayoutStore((state) => state.history.past.length > 0);
   const {
@@ -105,6 +107,7 @@ export function TopToolbar({ layout, analytics, onNew, onGenerate, onHybrid, onI
           <button className="toolbar-button-primary" onClick={workflow === "generate" ? onGenerate : workflow === "analyze" ? onRunAnalytics : workflow === "files" ? onImportExport : workflow === "simulation" ? () => setWorkflow("design") : onNew}>
             {workflow === "generate" ? "Generate" : workflow === "analyze" ? "Refresh analytics" : workflow === "files" ? "Import/export" : workflow === "simulation" ? "Return to Design" : "New layout"}
           </button>
+          <IconButton title="Debug / QA panel" onClick={onDebug}><Bug /></IconButton>
           <IconButton title="Keyboard shortcuts" onClick={onShortcuts}><Keyboard /></IconButton>
         </div>
       </div>

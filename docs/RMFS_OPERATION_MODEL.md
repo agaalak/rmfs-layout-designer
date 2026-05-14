@@ -104,6 +104,8 @@ Controllers are explicit modules so future strategy comparisons can evolve witho
 - Rack storage/reallocation: return home, nearest available storage, keep hot near station.
 - Charging: none, low battery to nearest charger.
 
+The controller registry in `src/simulation/controllers/controllerRegistry.ts` documents each strategy's stage, description, parameters, affected metrics, and limitations. Controller event-log entries include decision traces so a tester can inspect why a rack, station, robot, or storage location was selected.
+
 ## Rotation Zones
 
 If a station requires an orientation different from the rack's current orientation, route planning requires a compatible rotation-zone path. The robot stops in `ROTATING_WITH_RACK`, waits for rotation time, updates rack orientation, and then continues.
@@ -124,6 +126,25 @@ Simulation events are structured:
 
 Events cover order creation, rack/station/robot/storage controller decisions, rack reservation, lift/drop, station queue/service, inventory updates, rotation events, task completion, and failures.
 
+## Operational Invariants
+
+The simulator now checks core invariants in development/debug contexts:
+
+- no overlapping robot runtime envelopes
+- carried rack has exactly one carrying robot
+- rack marked carried references a valid carrying robot
+- robot carrying rack references a valid rack
+- stored rack references a valid current storage location
+- occupied storage location references a valid rack
+- reserved inventory does not exceed available quantity
+- order lines are not over-fulfilled
+- station active robot/rack references valid entities
+- station queue length does not exceed max queue length
+- active tasks do not reserve the same rack twice
+- robot pose, route cells, and reservation cells stay valid and in bounds
+
+Invariant findings are written to the Debug / QA panel and diagnostics exports.
+
 ## Still Experimental
 
 This is not full RAWSim-O and not MAPF.
@@ -138,6 +159,7 @@ Known limitations:
 - Rotation-zone capacity is simple capacity-1 resource reservation, not a global scheduler.
 - Browser E2E coverage for interactive canvas workflows is active again. It covers manual editing, generation, Hybrid, a small simulation cycle, view controls, zoom, and pan.
 - Battery drain and charging queues are not realistic yet.
+- Invariant failures currently log and surface diagnostics; a future setting should optionally pause simulation immediately.
 
 ## Roadmap
 

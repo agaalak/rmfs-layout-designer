@@ -23,6 +23,8 @@ import { TopToolbar } from "./TopToolbar";
 import { WorkflowRail } from "./WorkflowRail";
 import { useUiStore } from "../../store/uiStore";
 import { useSimulationStore } from "../../store/simulationStore";
+import { DebugPanel } from "../debug/DebugPanel";
+import { useDebugStore } from "../../debug/debugStore";
 
 type MobileDrawer = "tools" | "panel" | null;
 
@@ -36,6 +38,7 @@ export function AppShell() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [mobileDrawer, setMobileDrawer] = useState<MobileDrawer>(null);
   const [statusMessage, setStatusMessage] = useState("Live analytics ready");
+  const toggleDebugPanel = useDebugStore((state) => state.togglePanel);
   const selectObject = useLayoutStore((state) => state.selectObject);
   const selectCell = useLayoutStore((state) => state.selectCell);
   const candidateComparison = useLayoutStore((state) => state.candidateComparison);
@@ -59,6 +62,16 @@ export function AppShell() {
   useEffect(() => {
     setMobileDrawer(null);
   }, [workflow]);
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "d") {
+        event.preventDefault();
+        toggleDebugPanel();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [toggleDebugPanel]);
   const selectIssue = (issue: ValidationIssue) => {
     if (issue.objectId) {
       const ref: SelectedObjectRef | undefined =
@@ -92,6 +105,7 @@ export function AppShell() {
         onImportExport={() => setImportExportOpen(true)}
         onAnalyticsSettings={() => setAnalyticsSettingsOpen(true)}
         onShortcuts={() => setShortcutsOpen(true)}
+        onDebug={toggleDebugPanel}
         onStatus={setStatusMessage}
         onRunValidation={() => setStatusMessage(`Validation ran: ${validation.issues.length} finding${validation.issues.length === 1 ? "" : "s"}`)}
         onRunAnalytics={() => setStatusMessage(`Analytics refreshed: score ${analytics.scoring.overallLayoutScore.toFixed(1)}, throughput ${analytics.performance.estimatedSystemThroughput.toFixed(1)} /hr`)}
@@ -228,6 +242,7 @@ export function AppShell() {
       <ImportExportDialog open={importExportOpen} onClose={() => setImportExportOpen(false)} layout={layout} analytics={analytics} />
       <AnalyticsSettingsDialog open={analyticsSettingsOpen} onClose={() => setAnalyticsSettingsOpen(false)} />
       <KeyboardShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      <DebugPanel />
     </div>
   );
 }
