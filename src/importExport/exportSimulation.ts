@@ -3,6 +3,7 @@ import type { SimulationInventoryBin } from "../models/simulation";
 import {
   defaultSimulationConfig,
   type ChargingStrategy,
+  type DeadlockRecoveryPolicy,
   type OrderAssignmentStrategy,
   type RackSelectionStrategy,
   type RackStorageStrategy,
@@ -27,6 +28,7 @@ const strategyOptions = {
   rackStorageStrategy: ["return_home", "nearest_available_storage", "keep_hot_near_station"] as RackStorageStrategy[],
   chargingStrategy: ["none", "low_battery_to_nearest_charger"] as ChargingStrategy[]
 };
+const deadlockRecoveryPolicies: DeadlockRecoveryPolicy[] = ["wait", "replan", "priority_escalation", "fail_low_priority"];
 
 export function importSimulationConfigJson(text: string): { config?: SimulationConfig; errors: string[]; warnings: string[] } {
   let parsed: unknown;
@@ -60,9 +62,22 @@ export function importSimulationConfigJson(text: string): { config?: SimulationC
     "dropTimeSec",
     "stationServiceTimeSec",
     "taskCount",
-    "reservationTimeStepSec"
+    "reservationTimeStepSec",
+    "maxWaitBeforeReplanSec",
+    "maxReplanAttempts",
+    "maxBlockedTimeSec",
+    "loadedRobotPriorityBoost",
+    "reservationHorizonSec"
   ];
-  const booleanKeys: Array<keyof SimulationConfig> = ["showPaths", "showReservations", "showRobotLabels", "collisionCheckingEnabled"];
+  const booleanKeys: Array<keyof SimulationConfig> = [
+    "showPaths",
+    "showReservations",
+    "showRobotLabels",
+    "collisionCheckingEnabled",
+    "priorityAgingEnabled",
+    "deadlockDetectionEnabled",
+    "showLoadedEnvelope"
+  ];
 
   for (const key of numericKeys) {
     const value = raw[key];
@@ -102,7 +117,15 @@ export function importSimulationConfigJson(text: string): { config?: SimulationC
     }
   }
 
-  const knownKeys = new Set([...numericKeys, ...booleanKeys, "taskGenerationMode", ...Object.keys(strategyOptions)]);
+  if (raw.deadlockRecoveryPolicy !== undefined) {
+    if (typeof raw.deadlockRecoveryPolicy === "string" && deadlockRecoveryPolicies.includes(raw.deadlockRecoveryPolicy as DeadlockRecoveryPolicy)) {
+      config.deadlockRecoveryPolicy = raw.deadlockRecoveryPolicy as DeadlockRecoveryPolicy;
+    } else {
+      errors.push(`deadlockRecoveryPolicy must be one of ${deadlockRecoveryPolicies.join(", ")}.`);
+    }
+  }
+
+  const knownKeys = new Set([...numericKeys, ...booleanKeys, "taskGenerationMode", "deadlockRecoveryPolicy", ...Object.keys(strategyOptions)]);
   for (const key of Object.keys(raw)) {
     if (!knownKeys.has(key as keyof SimulationConfig)) warnings.push(`Ignored unknown simulation config field: ${key}.`);
   }

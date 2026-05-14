@@ -64,6 +64,9 @@ export function SimulationPanel({ layout, display = "desktop" }: { layout: Wareh
   const activeOrders = state.orders.filter((order) => !["COMPLETED", "FAILED"].includes(order.status));
   const allOrders = [...state.orders, ...state.completedOrders, ...state.failedOrders];
   const setStrategy = <K extends keyof SimulationConfig>(key: K, value: SimulationConfig[K]) => setConfig({ [key]: value } as Partial<SimulationConfig>);
+  const activeResourceReservations = Object.values(state.reservationTable.reservedResources).reduce((sum, records) => sum + records.length, 0);
+  const activeVertexReservations = Object.values(state.reservationTable.reservedVertices).reduce((sum, records) => sum + records.length, 0);
+  const blockedRobots = state.robots.filter((robot) => ["BLOCKED", "ERROR"].includes(robot.state) || robot.waitingReason);
   const importConfig = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -132,6 +135,46 @@ export function SimulationPanel({ layout, display = "desktop" }: { layout: Wareh
         <div><span className="text-muted-foreground">Cycle</span><div className="font-semibold">{state.metrics.averageTaskCycleTimeSec.toFixed(1)}s</div></div>
         <div><span className="text-muted-foreground">Robot util</span><div className="font-semibold">{(state.metrics.averageRobotUtilization * 100).toFixed(0)}%</div></div>
         <div><span className="text-muted-foreground">Station util</span><div className="font-semibold">{(state.metrics.stationUtilization * 100).toFixed(0)}%</div></div>
+      </section>
+
+      <section className="grid gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs">
+        <div className="flex items-center justify-between">
+          <div className="panel-title">Traffic Control</div>
+          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">Diagnostics</span>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <div><span className="text-muted-foreground">Conflicts</span><div className="font-semibold">{state.metrics.reservationConflictCount}</div></div>
+          <div><span className="text-muted-foreground">Replans</span><div className="font-semibold">{state.metrics.replanCount}</div></div>
+          <div><span className="text-muted-foreground">Deadlocks</span><div className="font-semibold">{state.metrics.deadlockCount}</div></div>
+          <div><span className="text-muted-foreground">Wait time</span><div className="font-semibold">{state.metrics.totalWaitTimeSec.toFixed(1)}s</div></div>
+          <div><span className="text-muted-foreground">Vertex res.</span><div className="font-semibold">{activeVertexReservations}</div></div>
+          <div><span className="text-muted-foreground">Resource res.</span><div className="font-semibold">{activeResourceReservations}</div></div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Wait before replan (s)"><input className="field-input" type="number" value={config.maxWaitBeforeReplanSec} onChange={(event) => set("maxWaitBeforeReplanSec", number(event))} /></Field>
+          <Field label="Max replans"><input className="field-input" type="number" value={config.maxReplanAttempts} onChange={(event) => set("maxReplanAttempts", number(event))} /></Field>
+          <Field label="Max blocked (s)"><input className="field-input" type="number" value={config.maxBlockedTimeSec} onChange={(event) => set("maxBlockedTimeSec", number(event))} /></Field>
+          <Field label="Reservation horizon (s)"><input className="field-input" type="number" value={config.reservationHorizonSec} onChange={(event) => set("reservationHorizonSec", number(event))} /></Field>
+        </div>
+        <label className="flex items-center gap-2 rounded-md border border-amber-200 bg-white px-2 py-2">
+          <input type="checkbox" checked={config.deadlockDetectionEnabled} onChange={(event) => set("deadlockDetectionEnabled", event.target.checked)} />
+          Deadlock detection
+        </label>
+        <div className="max-h-24 overflow-auto rounded border border-amber-200 bg-white">
+          {state.trafficDiagnostics.lastConflicts.length === 0 && blockedRobots.length === 0 ? (
+            <div className="p-2 text-muted-foreground">No traffic conflicts recorded.</div>
+          ) : null}
+          {blockedRobots.slice(0, 4).map((robot) => (
+            <div key={robot.robotId} className="border-b border-border px-2 py-1">
+              <span className="font-semibold">{robot.robotId}</span> {robot.waitingReason ?? robot.blockedReason ?? robot.state}
+            </div>
+          ))}
+          {state.trafficDiagnostics.lastConflicts.slice(-4).map((conflict, index) => (
+            <div key={`${conflict.timeSec}_${index}`} className="border-b border-border px-2 py-1">
+              [{conflict.timeSec.toFixed(1)}] {conflict.robotId ?? conflict.resourceId ?? "resource"} - {conflict.message}
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="grid grid-cols-2 gap-2">
@@ -260,6 +303,7 @@ export function SimulationPanel({ layout, display = "desktop" }: { layout: Wareh
         {[
           ["showPaths", "Show paths"],
           ["showReservations", "Show reservations"],
+          ["showLoadedEnvelope", "Show loaded envelope"],
           ["showRobotLabels", "Show robot labels"],
           ["collisionCheckingEnabled", "Collision checking"]
         ].map(([key, label]) => (

@@ -30,7 +30,7 @@ The main state object tracks:
 - event log
 - live metrics
 
-The simulation config stores robot count, speeds, acceleration/deceleration values, lift/drop time, station service time, task generation mode/count, reservation time step, visual toggles, and controller strategy choices.
+The simulation config stores robot count, speeds, acceleration/deceleration values, lift/drop time, station service time, task generation mode/count, reservation time step, visual toggles, controller strategy choices, and traffic-control policy settings such as wait-before-replan, max blocked time, reservation horizon, and deadlock recovery policy.
 
 ## Operational RMFS Model
 
@@ -146,16 +146,29 @@ The reservation table stores:
 
 - reserved vertex cells by time step
 - reserved directed edges by time step
+- reserved resources by time step
 - reservation time-step size
 
 Implemented rules:
 
 - Two robots cannot reserve the same cell at the same time.
 - Two robots cannot swap edges at the same time.
+- Loaded robots reserve the carried-rack footprint cells in addition to the robot center cell.
+- Rotation zones, station queue/service slots, storage destinations, chargers, and parking spots can be represented as finite resources.
 - Existing reservations for a robot can be cleared before replanning.
 - Wait steps can be inserted at the start of a path to resolve simple conflicts.
 
 This is a practical first layer, not a complete deadlock-free MAPF algorithm.
+
+## Collision Envelopes And Traffic Control
+
+`src/simulation/collisionEnvelope.ts` defines unloaded and loaded robot envelopes. Unloaded robots currently occupy one grid cell. Loaded robots occupy the robot center cell plus the carried rack footprint, including `1x2`, `2x1`, and `2x2` racks. Rectangular footprints rotate when the rack orientation changes by 90 degrees.
+
+`src/simulation/trafficController.ts` reserves a full route with loaded envelopes after pickup. It detects blocked-cell and stored-rack envelope overlaps, retries with bounded wait steps, records conflict/replan counters, and fails unsafe dispatches with clear traffic events instead of silently allowing overlap.
+
+`src/simulation/deadlockDetector.ts` detects repeated reservation conflicts and robots blocked beyond the configured threshold. Recovery is intentionally conservative: it records deadlock events, clears the selected robot's future reservations, and marks the robot waiting or blocked according to the configured policy.
+
+`src/simulation/scenarioRunner.ts` provides deterministic non-browser scenario execution for regression tests and future experiment runs.
 
 ## Simulation Engine
 
@@ -204,7 +217,7 @@ This is FIFO service, not a detailed workstation labor model. PICK and COMBI ser
 
 Station required orientation and accepted rack faces are copied into tasks. If a station orientation differs from the rack's current orientation, route planning can include paths to compatible rotation zones before the station and before the return leg.
 
-Current behavior: compatible rotation-zone paths create explicit `ROTATING_WITH_RACK` dwell states. Rack orientation updates at the end of pre-station and post-station rotation events. The model does not yet reserve rotation-zone capacity across multiple loaded robots.
+Current behavior: compatible rotation-zone paths create explicit `ROTATING_WITH_RACK` dwell states. Rack orientation updates at the end of pre-station and post-station rotation events. Rotation zones now attempt capacity-1 resource reservation during dwell and produce wait/conflict events if a zone is busy.
 
 ## Validation Before Simulation
 
@@ -237,11 +250,10 @@ Simulation config JSON can also be imported with validation.
 
 Recommended sequence:
 
-1. Add explicit rack-rotation dwell states and rotation-zone capacity reservations.
-2. Reserve carried-rack footprints and swept envelopes for loaded robots.
-3. Add replan-after-blocked thresholds and deadlock recovery.
-4. Add WHCA* as a bounded rolling-horizon planner.
-5. Add CBS for small benchmark scenarios and comparison tests.
-6. Add battery drain, charger assignment, and charger queue policies.
-7. Add richer station processing models and order/task batching.
-8. Add 3D visualization once the 2D event/state model is stable.
+1. Repair skipped browser interaction tests so canvas/manual workflows are covered end to end again.
+2. Add WHCA* as a bounded rolling-horizon planner over the current reservation table.
+3. Add CBS for small benchmark scenarios and comparison tests.
+4. Improve deadlock recovery from conservative blocking to safe local replanning.
+5. Add battery drain, charger assignment, and charger queue policies.
+6. Add richer station processing models and order/task batching.
+7. Add 3D visualization once the 2D event/state model is stable.

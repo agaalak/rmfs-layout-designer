@@ -19,8 +19,11 @@ export type SimulationEventEntityType =
   | "controller"
   | "path_planner"
   | "traffic"
+  | "resource"
+  | "deadlock"
   | "inventory"
   | "task";
+export type DeadlockRecoveryPolicy = "wait" | "replan" | "priority_escalation" | "fail_low_priority";
 
 export type OrderAssignmentStrategy = "FIFO" | "priority_first" | "earliest_due_time";
 export type RackSelectionStrategy = "nearest_rack_with_sku" | "most_inventory_for_sku" | "hot_warm_cold_weighted" | "manual";
@@ -52,6 +55,15 @@ export interface SimulationConfig {
   robotAssignmentStrategy: RobotAssignmentStrategy;
   rackStorageStrategy: RackStorageStrategy;
   chargingStrategy: ChargingStrategy;
+  maxWaitBeforeReplanSec: number;
+  maxReplanAttempts: number;
+  maxBlockedTimeSec: number;
+  priorityAgingEnabled: boolean;
+  loadedRobotPriorityBoost: number;
+  deadlockDetectionEnabled: boolean;
+  deadlockRecoveryPolicy: DeadlockRecoveryPolicy;
+  reservationHorizonSec: number;
+  showLoadedEnvelope: boolean;
 }
 
 export interface StationQueue {
@@ -62,13 +74,24 @@ export interface StationQueue {
 }
 
 export interface ReservationRecord {
-  robotId: string;
-  cell: GridCell;
+  reservationId?: string;
+  robotId?: string;
+  taskId?: string;
+  resourceId?: string;
+  kind?: string;
+  timeStep?: number;
+  cell?: GridCell;
+  cells?: GridCell[];
+  from?: GridCell;
+  to?: GridCell;
+  fromCell?: GridCell;
+  toCell?: GridCell;
 }
 
 export interface ReservationTableSnapshot {
   reservedVertices: Record<number, ReservationRecord[]>;
-  reservedEdges: Record<number, Array<{ robotId: string; from: GridCell; to: GridCell }>>;
+  reservedEdges: Record<number, ReservationRecord[]>;
+  reservedResources: Record<number, ReservationRecord[]>;
   reservationTimeStepSec: number;
 }
 
@@ -135,6 +158,23 @@ export interface SimulationMetrics {
   estimatedThroughputPerHour: number;
   averageRobotUtilization: number;
   stationUtilization: number;
+  totalWaitTimeSec: number;
+  averageWaitTimePerTaskSec: number;
+  reservationConflictCount: number;
+  replanCount: number;
+  deadlockCount: number;
+  deadlockRecoveryCount: number;
+  failedDueToTrafficCount: number;
+  averageQueueWaitTimeSec: number;
+  maxQueueWaitTimeSec: number;
+  loadedTravelDistanceM: number;
+  emptyTravelDistanceM: number;
+  loadedTravelTimeSec: number;
+  emptyTravelTimeSec: number;
+  robotUtilizationByState: Record<string, number>;
+  stationQueueUtilization: number;
+  rotationZoneUtilization: number;
+  storageReallocationCount: number;
 }
 
 export interface SimulationState {
@@ -157,8 +197,24 @@ export interface SimulationState {
   reservationTable: ReservationTableSnapshot;
   stationQueues: StationQueue[];
   eventLog: SimulationEvent[];
+  trafficDiagnostics: TrafficDiagnostics;
   metrics: SimulationMetrics;
   initialized: boolean;
+}
+
+export interface TrafficDiagnostics {
+  reservationConflictCount: number;
+  replanCount: number;
+  deadlockCount: number;
+  deadlockRecoveryCount: number;
+  failedDueToTrafficCount: number;
+  totalWaitTimeSec: number;
+  robotWaitTimes: Record<string, number>;
+  robotReplanAttempts: Record<string, number>;
+  robotBlockedSinceSec: Record<string, number>;
+  repeatedConflictPairs: Record<string, number>;
+  activeDeadlocks: Array<{ robotIds: string[]; detectedAtSec: number; reason: string }>;
+  lastConflicts: Array<{ timeSec: number; robotId?: string; taskId?: string; resourceId?: string; message: string }>;
 }
 
 export const defaultSimulationConfig: SimulationConfig = {
@@ -183,7 +239,16 @@ export const defaultSimulationConfig: SimulationConfig = {
   stationAssignmentStrategy: "nearest_compatible_station",
   robotAssignmentStrategy: "first_available_robot",
   rackStorageStrategy: "return_home",
-  chargingStrategy: "none"
+  chargingStrategy: "none",
+  maxWaitBeforeReplanSec: 6,
+  maxReplanAttempts: 2,
+  maxBlockedTimeSec: 20,
+  priorityAgingEnabled: true,
+  loadedRobotPriorityBoost: 2,
+  deadlockDetectionEnabled: true,
+  deadlockRecoveryPolicy: "replan",
+  reservationHorizonSec: 60,
+  showLoadedEnvelope: false
 };
 
 export const emptySimulationMetrics: SimulationMetrics = {
@@ -195,5 +260,37 @@ export const emptySimulationMetrics: SimulationMetrics = {
   averageTaskCycleTimeSec: 0,
   estimatedThroughputPerHour: 0,
   averageRobotUtilization: 0,
-  stationUtilization: 0
+  stationUtilization: 0,
+  totalWaitTimeSec: 0,
+  averageWaitTimePerTaskSec: 0,
+  reservationConflictCount: 0,
+  replanCount: 0,
+  deadlockCount: 0,
+  deadlockRecoveryCount: 0,
+  failedDueToTrafficCount: 0,
+  averageQueueWaitTimeSec: 0,
+  maxQueueWaitTimeSec: 0,
+  loadedTravelDistanceM: 0,
+  emptyTravelDistanceM: 0,
+  loadedTravelTimeSec: 0,
+  emptyTravelTimeSec: 0,
+  robotUtilizationByState: {},
+  stationQueueUtilization: 0,
+  rotationZoneUtilization: 0,
+  storageReallocationCount: 0
+};
+
+export const emptyTrafficDiagnostics: TrafficDiagnostics = {
+  reservationConflictCount: 0,
+  replanCount: 0,
+  deadlockCount: 0,
+  deadlockRecoveryCount: 0,
+  failedDueToTrafficCount: 0,
+  totalWaitTimeSec: 0,
+  robotWaitTimes: {},
+  robotReplanAttempts: {},
+  robotBlockedSinceSec: {},
+  repeatedConflictPairs: {},
+  activeDeadlocks: [],
+  lastConflicts: []
 };

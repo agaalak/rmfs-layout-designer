@@ -132,17 +132,18 @@ Known limitations:
 
 - Task generation creates sample orders from inventory rather than importing real waves.
 - Replenishment UI is still limited compared with pick-order UI.
-- Reservation traffic control prevents obvious same-cell and edge-swap conflicts but does not prove deadlock freedom.
-- Carried-rack footprint reservations are not complete.
-- Rotation-zone capacity is simple.
+- Reservation traffic control prevents obvious same-cell, edge-swap, loaded-envelope, and simple resource-capacity conflicts but does not prove deadlock freedom.
+- Carried-rack footprint reservations are grid-cell based; continuous swept envelopes and turn-radius envelopes are not complete.
+- Rotation-zone capacity is simple capacity-1 resource reservation, not a global scheduler.
+- Browser E2E coverage for deep interactive canvas workflows is currently skipped because Playwright/Konva click stability regressed; unit/store-level tests cover the traffic model while this is repaired.
 - Battery drain and charging queues are not realistic yet.
 
 ## Roadmap
 
 1. Stabilize RMFS operational model: storage locations, rack status, orders, inventory, station service, rack storage/reallocation.
-2. Improve traffic control: better reservations, deadlock detection, recovery, wait/replan policies, and carried-rack footprint reservations.
-3. Add MAPF planning: WHCA* first, then optional CBS/advanced solvers for comparison.
-4. Improve realism: acceleration/deceleration, rotation dwell, battery drain, charging policy, and station service variability.
-5. Add experiment runner for multiple seeds, controller strategy comparison, layout comparison, and metric exports.
-6. Add 3D/RTS-style visualization only after the 2D simulator is stable.
-
+2. Stabilize traffic control: loaded envelope reservations, resource reservations, deadlock detection, wait/replan policies, and scenario-runner regressions.
+3. Repair and re-enable full browser E2E coverage for manual editing, generation, hybrid, and simulation cycles.
+4. Add MAPF planning: WHCA* first, then optional CBS/advanced solvers for comparison.
+5. Improve realism: acceleration/deceleration, rotation dwell, battery drain, charging policy, and station service variability.
+6. Add experiment runner for multiple seeds, controller strategy comparison, layout comparison, and metric exports.
+7. Add 3D/RTS-style visualization only after the 2D simulator is stable.

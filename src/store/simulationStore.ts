@@ -3,6 +3,7 @@ import type { WarehouseLayout } from "../models/layout";
 import {
   defaultSimulationConfig,
   emptySimulationMetrics,
+  emptyTrafficDiagnostics,
   type SimulationConfig,
   type SimulationState
 } from "../models/simulation";
@@ -56,6 +57,7 @@ const initialState: SimulationState = {
   reservationTable: createReservationTable(defaultSimulationConfig.reservationTimeStepSec),
   stationQueues: [],
   eventLog: [],
+  trafficDiagnostics: structuredClone(emptyTrafficDiagnostics),
   metrics: emptySimulationMetrics,
   initialized: false
 };

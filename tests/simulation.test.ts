@@ -4,8 +4,11 @@ import { defaultSimulationConfig, type SimulationConfig } from "../src/models/si
 import type { WarehouseLayout } from "../src/models/layout";
 import { buildRoadGraph } from "../src/graph/graphBuilder";
 import { exportSimulationConfigJson, exportSimulationEventLogCsv, exportSimulationMetricsCsv, importSimulationConfigJson } from "../src/importExport/exportSimulation";
-import { createReservationTable, addWaitSteps, findFirstConflict, isCellReserved, isEdgeReserved, reservePath } from "../src/simulation/reservationTable";
+import { createReservationTable, addWaitSteps, findFirstConflict, isCellReserved, isEdgeReserved, reserveEnvelopePath, reservePath, reserveResource } from "../src/simulation/reservationTable";
 import { calculatePathDistanceMeters, findPathToNearestRackApproach, findShortestPath, nearestCompatibleStation } from "../src/simulation/pathPlanner";
+import { getLoadedRobotEnvelopeAtCell, envelopeOverlapsBlockedCells, envelopeOverlapsStaticRacks } from "../src/simulation/collisionEnvelope";
+import { applyDeadlockRecovery, detectDeadlocks } from "../src/simulation/deadlockDetector";
+import { runScenario } from "../src/simulation/scenarioRunner";
 import {
   createTaskForRackStation,
   generateSimulationTasks,
@@ -106,6 +109,53 @@ describe("2D simulation foundation", () => {
     expect(conflict?.type).toBe("edge");
   });
 
+  it("reserves loaded robot envelopes for 1x1, 1x2, and 2x2 racks", () => {
+    const layout = simLayout();
+    const state = initializeSimulation(layout, fastConfig);
+    const robot = state.robots[0];
+    const rack = { ...layout.racks[0], footprintWidthM: 1, footprintDepthM: 1, currentOrientationDeg: 0 as const };
+    expect(getLoadedRobotEnvelopeAtCell(layout, robot, rack, { row: 5, col: 5 }).occupiedCells).toHaveLength(1);
+
+    const rectangular = { ...rack, footprintWidthM: 2, footprintDepthM: 1 };
+    expect(getLoadedRobotEnvelopeAtCell(layout, robot, rectangular, { row: 5, col: 5 }, 0).rackOccupiedCells).toHaveLength(2);
+    const rotated = getLoadedRobotEnvelopeAtCell(layout, robot, rectangular, { row: 5, col: 5 }, 90).rackOccupiedCells!;
+    expect(rotated.map((cell) => cell.row)).toContain(6);
+
+    const square = { ...rack, footprintWidthM: 2, footprintDepthM: 2 };
+    expect(getLoadedRobotEnvelopeAtCell(layout, robot, square, { row: 5, col: 5 }).rackOccupiedCells).toHaveLength(4);
+  });
+
+  it("detects loaded envelope overlap with blocked cells and stored racks", () => {
+    const layout = simLayout();
+    const state = initializeSimulation(layout, fastConfig);
+    const robot = state.robots[0];
+    const rack = { ...layout.racks[0], footprintWidthM: 2, footprintDepthM: 1, currentOrientationDeg: 0 as const };
+    const envelope = getLoadedRobotEnvelopeAtCell(layout, robot, rack, { row: 5, col: 5 });
+    layout.cells.push({ row: 5, col: 6, cellType: "BLOCKED", allowedDirections: [] });
+    expect(envelopeOverlapsBlockedCells(layout, envelope)).toContainEqual({ row: 5, col: 6 });
+
+    layout.cells = layout.cells.filter((cell) => !(cell.row === 5 && cell.col === 6));
+    layout.racks[1].homeCell = { row: 5, col: 6 };
+    expect(envelopeOverlapsStaticRacks(layout, state, envelope, rack.id)[0].rackId).toBe(layout.racks[1].id);
+  });
+
+  it("catches loaded-envelope and finite resource reservation conflicts", () => {
+    const table = createReservationTable(1);
+    const path = [{ row: 0, col: 0 }, { row: 0, col: 1 }];
+    const first = reserveEnvelopePath(table, "robot_a", "task_a", path, 0, 1, (cell) => [cell, { row: cell.row, col: cell.col + 1 }]);
+    const second = reserveEnvelopePath(first.table, "robot_b", "task_b", path, 0, 1, (cell) => [cell]);
+    expect(second.conflict?.type).toBe("envelope");
+
+    const reservedZone = reserveResource(table, "rz_1", "ROTATION_ZONE", 0, 5, 1, { robotId: "robot_a", taskId: "task_a" });
+    const conflictedZone = reserveResource(reservedZone.table, "rz_1", "ROTATION_ZONE", 1, 2, 1, { robotId: "robot_b", taskId: "task_b" });
+    expect(conflictedZone.conflict?.type).toBe("resource");
+
+    const queue = reserveResource(table, "station_1", "STATION_QUEUE_SLOT", 0, 10, 2, { robotId: "robot_a" });
+    const queueTwo = reserveResource(queue.table, "station_1", "STATION_QUEUE_SLOT", 0, 10, 2, { robotId: "robot_b" });
+    const queueThree = reserveResource(queueTwo.table, "station_1", "STATION_QUEUE_SLOT", 0, 10, 2, { robotId: "robot_c" });
+    expect(queueThree.conflict?.resourceId).toBe("station_1");
+  });
+
   it("waiting steps can resolve a simple reservation conflict", () => {
     const table = createReservationTable(1);
     const reserved = reservePath(table, "robot_a", [{ row: 0, col: 0 }, { row: 0, col: 1 }], 0, 1).table;
@@ -158,6 +208,38 @@ describe("2D simulation foundation", () => {
     expect(state.tasks).toHaveLength(0);
     expect(state.eventLog).toHaveLength(0);
     expect(state.metrics.activeRobotCount).toBe(0);
+  });
+
+  it("detects repeated-conflict deadlocks and clears recovery reservations", () => {
+    const layout = simLayout();
+    let state = initializeSimulation(layout, { ...fastConfig, robotCount: 2, maxBlockedTimeSec: 1 });
+    state = {
+      ...state,
+      trafficDiagnostics: {
+        ...state.trafficDiagnostics,
+        repeatedConflictPairs: { [`${state.robots[0].robotId}__${state.robots[1].robotId}`]: 2 }
+      }
+    };
+    const detections = detectDeadlocks(state, { ...fastConfig, deadlockDetectionEnabled: true });
+    expect(detections[0].robotIds).toHaveLength(2);
+    const recovered = applyDeadlockRecovery(state, detections, fastConfig).state;
+    expect(recovered.trafficDiagnostics.deadlockRecoveryCount).toBeGreaterThan(0);
+  });
+
+  it("runs deterministic simulation scenarios", () => {
+    const layout = simLayout();
+    const scenario = runScenario(layout, {
+      scenarioId: "unit_scenario",
+      seed: 42,
+      robotCount: 2,
+      orderCount: 2,
+      maxSimTimeSec: 25,
+      stopWhenAllOrdersComplete: true,
+      simulationConfig: fastConfig
+    });
+    expect(scenario.scenarioId).toBe("unit_scenario");
+    expect(scenario.eventLog.length).toBeGreaterThan(0);
+    expect(scenario.conflictCount).toBeGreaterThanOrEqual(0);
   });
 
   it("exports simulation metrics and event log CSV", () => {

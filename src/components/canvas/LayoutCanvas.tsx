@@ -264,7 +264,7 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
           <Layer>
             <ReservationLayer simulation={simulation} cellSize={cellSize} visible={appMode === "simulation" && simulationConfig.showReservations} />
             <PathLayer simulation={simulation} cellSize={cellSize} visible={simulationConfig.showPaths} />
-            <RobotLayer layout={layout} simulation={simulation} cellSize={cellSize} showLabels={simulationConfig.showRobotLabels} />
+            <RobotLayer layout={layout} simulation={simulation} cellSize={cellSize} showLabels={simulationConfig.showRobotLabels} showLoadedEnvelope={simulationConfig.showLoadedEnvelope} />
             <SimulationOverlayLayer layout={layout} simulation={simulation} cellSize={cellSize} />
           </Layer>
         ) : null}

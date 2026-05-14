@@ -6,6 +6,7 @@ import type { Robot, RobotState } from "../models/robot";
 import {
   defaultSimulationConfig,
   emptySimulationMetrics,
+  emptyTrafficDiagnostics,
   type SimulationConfig,
   type SimulationEvent,
   type SimulationMetrics,
@@ -21,13 +22,15 @@ import { cellKey, manhattanMeters, parseCellKey } from "../utils/gridMath";
 import { rackOccupiedCells } from "../utils/rackFootprint";
 import { ensureStorageLocations } from "../utils/storageLocations";
 import { findNearestRotationZonePath, findPathToNearestRackApproach, findPathToStationQueue, nearestCompatibleStation } from "./pathPlanner";
-import { addWaitSteps, createReservationTable, reservePath } from "./reservationTable";
+import { createReservationTable, reserveResource } from "./reservationTable";
 import { inventoryFromLayout, pickInventory, replenishInventory, reserveInventory, applyPickToOrder } from "./inventory";
 import { generateSampleOrders } from "./orderGeneration";
 import { selectRackForOrderLine } from "./controllers/rackSelectionController";
 import { selectStationForRack } from "./controllers/stationAssignmentController";
 import { selectStorageDestination } from "./controllers/rackStorageController";
 import { selectRobotForCell } from "./controllers/robotAssignmentController";
+import { reserveTaskRouteWithTrafficPolicy } from "./trafficController";
+import { applyDeadlockRecovery, detectDeadlocks } from "./deadlockDetector";
 
 const robotColors: Record<RobotState, string> = {
   IDLE: "#64748b",
@@ -176,6 +179,7 @@ export function initializeSimulation(layout: WarehouseLayout, config: Simulation
     reservationTable: createReservationTable(config.reservationTimeStepSec),
     stationQueues: normalized.stations.map((station): StationQueue => ({ stationId: station.id, waitingRobotIds: [] })),
     eventLog,
+    trafficDiagnostics: structuredClone(emptyTrafficDiagnostics),
     metrics: calculateSimulationMetrics({ robots, tasks: [], completedTasks: [], failedTasks: [], stationQueues: [] }, 0, normalized),
     initialized: true
   };
@@ -202,6 +206,7 @@ export function resetSimulation(config: SimulationConfig = defaultSimulationConf
     reservationTable: createReservationTable(config.reservationTimeStepSec),
     stationQueues: [],
     eventLog: [],
+    trafficDiagnostics: structuredClone(emptyTrafficDiagnostics),
     metrics: emptySimulationMetrics,
     initialized: false
   };
@@ -466,19 +471,11 @@ function activePathWithWaits(
   layout: WarehouseLayout,
   state: SimulationState,
   robot: Robot,
+  task: SimulationTask,
   route: SimulationRoutePlan,
   config: SimulationConfig
 ) {
-  const fullPath = concatPaths([route.emptyPathToRack, planLoadedPath(route), route.pathToPostStationRotationZone ?? [], route.returnPath]);
-  if (!config.collisionCheckingEnabled) return { path: route.emptyPathToRack, table: state.reservationTable };
-  let candidate = fullPath;
-  let table = state.reservationTable;
-  for (let wait = 0; wait <= 12; wait += 1) {
-    const result = reservePath(table, robot.robotId, candidate, state.simTimeSec, robot.speedUnloadedMps);
-    if (!result.conflict) return { path: addWaitSteps(route.emptyPathToRack, wait), table: result.table };
-    candidate = addWaitSteps(fullPath, wait + 1);
-  }
-  return { path: route.emptyPathToRack, table };
+  return reserveTaskRouteWithTrafficPolicy(layout, state, robot, task, route, config);
 }
 
 function assignTasks(layout: WarehouseLayout, state: SimulationState, config: SimulationConfig): SimulationState {
@@ -512,7 +509,70 @@ function assignTasks(layout: WarehouseLayout, state: SimulationState, config: Si
       next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "error", taskId: task.taskId, message: `Task ${task.taskId} failed: no route.` });
       continue;
     }
-    const reservation = activePathWithWaits(layout, next, robot, routePlan, config);
+    const reservation = activePathWithWaits(layout, next, robot, task, routePlan, config);
+    if (reservation.conflict) {
+      const message = reservation.explanation ?? `Traffic reservation conflict for task ${task.taskId}.`;
+      const pairKey = reservation.conflict.robotId ? [robot.robotId, reservation.conflict.robotId].sort().join("__") : `${robot.robotId}__resource`;
+      next.trafficDiagnostics = {
+        ...next.trafficDiagnostics,
+        reservationConflictCount: next.trafficDiagnostics.reservationConflictCount + 1,
+        replanCount: next.trafficDiagnostics.replanCount + reservation.replanAttempts,
+        repeatedConflictPairs: {
+          ...next.trafficDiagnostics.repeatedConflictPairs,
+          [pairKey]: (next.trafficDiagnostics.repeatedConflictPairs[pairKey] ?? 0) + 1
+        },
+        lastConflicts: [
+          ...next.trafficDiagnostics.lastConflicts,
+          {
+            timeSec: next.simTimeSec,
+            robotId: robot.robotId,
+            taskId: task.taskId,
+            resourceId: reservation.conflict.resourceId,
+            message
+          }
+        ].slice(-20)
+      };
+      next.eventLog = log(next.eventLog, {
+        timeSec: next.simTimeSec,
+        severity: reservation.blocked ? "error" : "warning",
+        entityType: "traffic",
+        entityId: robot.robotId,
+        robotId: robot.robotId,
+        taskId: task.taskId,
+        relatedIds: { conflictRobotId: reservation.conflict.robotId, resourceId: reservation.conflict.resourceId },
+        message
+      });
+      if (reservation.blocked) {
+        next.trafficDiagnostics.failedDueToTrafficCount += 1;
+        next.tasks = next.tasks.map((item) => (item.taskId === task.taskId ? { ...item, status: "FAILED", failureReason: message } : item));
+        next.failedTasks.push({ ...task, status: "FAILED", failureReason: message });
+        continue;
+      }
+    }
+    if (reservation.waitSteps > 0) {
+      const waitSec = reservation.waitSteps * config.reservationTimeStepSec;
+      next.trafficDiagnostics = {
+        ...next.trafficDiagnostics,
+        totalWaitTimeSec: next.trafficDiagnostics.totalWaitTimeSec + waitSec,
+        robotWaitTimes: {
+          ...next.trafficDiagnostics.robotWaitTimes,
+          [robot.robotId]: (next.trafficDiagnostics.robotWaitTimes[robot.robotId] ?? 0) + waitSec
+        },
+        robotReplanAttempts: {
+          ...next.trafficDiagnostics.robotReplanAttempts,
+          [robot.robotId]: (next.trafficDiagnostics.robotReplanAttempts[robot.robotId] ?? 0) + reservation.replanAttempts
+        }
+      };
+      next.eventLog = log(next.eventLog, {
+        timeSec: next.simTimeSec,
+        severity: "info",
+        entityType: "traffic",
+        entityId: robot.robotId,
+        robotId: robot.robotId,
+        taskId: task.taskId,
+        message: `${robot.robotId} inserted ${reservation.waitSteps} wait step(s) before dispatch.`
+      });
+    }
     next.reservationTable = reservation.table;
     next.robots = next.robots.map((item) =>
       item.robotId === robot.robotId
@@ -525,7 +585,11 @@ function assignTasks(layout: WarehouseLayout, state: SimulationState, config: Si
             routeIndex: 0,
             segmentProgressM: 0,
             pathProgress: 0,
-            routePhase: "TO_RACK"
+            routePhase: "TO_RACK",
+            waitingReason: reservation.waitSteps > 0 ? "Traffic reservation delay before dispatch" : undefined,
+            conflictTarget: reservation.conflict?.robotId ?? reservation.conflict?.resourceId,
+            replanAttempts: reservation.replanAttempts,
+            totalWaitTimeSec: (item.totalWaitTimeSec ?? 0) + reservation.waitSteps * config.reservationTimeStepSec
           }
         : item
     );
@@ -726,9 +790,55 @@ function handleRobotTransitions(layout: WarehouseLayout, state: SimulationState,
       next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "info", entityType: "rack", entityId: task.rackId, robotId: robot.robotId, taskId: task.taskId, message: `${robot.robotId} lifted rack ${task.rackId}; storage ${sourceStorageId ?? "unknown"} freed.` });
     }
     if (robot.state === "MOVING_LOADED" && movementComplete(robot)) {
+      if (robot.waitUntilSec !== undefined && next.simTimeSec < robot.waitUntilSec) continue;
       if (robot.routePhase === "PRE_ROTATION") {
-        const zoneRotationTime = layout.rotationZones.find((zone) => zone.cells.some((cell) => cellKey(cell) === cellKey(robot.currentCell)))?.rotationTimeSec;
+        const zone = layout.rotationZones.find((item) => item.cells.some((cell) => cellKey(cell) === cellKey(robot.currentCell)));
+        const zoneRotationTime = zone?.rotationTimeSec;
         const rotationTime = zoneRotationTime ?? (config.rotationSpeedDegPerSec > 0 ? 360 / Math.max(1, config.rotationSpeedDegPerSec) : 6);
+        if (zone) {
+          const reservation = reserveResource(next.reservationTable, zone.id, "ROTATION_ZONE", next.simTimeSec, rotationTime, 1, {
+            robotId: robot.robotId,
+            taskId: task.taskId,
+            cells: zone.cells
+          });
+          if (reservation.conflict) {
+            next.trafficDiagnostics.reservationConflictCount += 1;
+            next.trafficDiagnostics.totalWaitTimeSec += config.reservationTimeStepSec;
+            next.trafficDiagnostics.robotWaitTimes[robot.robotId] = (next.trafficDiagnostics.robotWaitTimes[robot.robotId] ?? 0) + config.reservationTimeStepSec;
+            next.trafficDiagnostics.lastConflicts = [
+              ...next.trafficDiagnostics.lastConflicts,
+              {
+                timeSec: next.simTimeSec,
+                robotId: robot.robotId,
+                taskId: task.taskId,
+                resourceId: zone.id,
+                message: reservation.conflict.message ?? `Rotation zone ${zone.rotationZoneId} is reserved.`
+              }
+            ].slice(-20);
+            next.robots = next.robots.map((item) =>
+              item.robotId === robot.robotId
+                ? {
+                    ...item,
+                    waitUntilSec: next.simTimeSec + config.reservationTimeStepSec,
+                    waitingReason: `Waiting for rotation zone ${zone.rotationZoneId}`,
+                    conflictTarget: zone.id,
+                    totalWaitTimeSec: (item.totalWaitTimeSec ?? 0) + config.reservationTimeStepSec
+                  }
+                : item
+            );
+            next.eventLog = log(next.eventLog, {
+              timeSec: next.simTimeSec,
+              severity: "warning",
+              entityType: "resource",
+              entityId: zone.id,
+              robotId: robot.robotId,
+              taskId: task.taskId,
+              message: `Rotation zone ${zone.rotationZoneId} is busy; ${robot.robotId} will wait.`
+            });
+            continue;
+          }
+          next.reservationTable = reservation.table;
+        }
         next.robots = next.robots.map((item) =>
           item.robotId === robot.robotId ? { ...item, state: "ROTATING_WITH_RACK", color: robotColors.ROTATING_WITH_RACK, waitUntilSec: next.simTimeSec + rotationTime } : item
         );
@@ -773,8 +883,44 @@ function handleRobotTransitions(layout: WarehouseLayout, state: SimulationState,
       next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "info", entityType: "rack", entityId: task.rackId, robotId: robot.robotId, taskId: task.taskId, message: `Rack ${task.rackId} rotated to ${targetOrientation ?? "default"} degrees.` });
     }
     if (robot.state === "RETURNING_RACK" && movementComplete(robot)) {
+      if (robot.waitUntilSec !== undefined && next.simTimeSec < robot.waitUntilSec) continue;
       if (robot.routePhase === "POST_ROTATION") {
-        const rotationTime = layout.rotationZones.find((zone) => zone.cells.some((cell) => cellKey(cell) === cellKey(robot.currentCell)))?.rotationTimeSec ?? 6;
+        const zone = layout.rotationZones.find((item) => item.cells.some((cell) => cellKey(cell) === cellKey(robot.currentCell)));
+        const rotationTime = zone?.rotationTimeSec ?? 6;
+        if (zone) {
+          const reservation = reserveResource(next.reservationTable, zone.id, "ROTATION_ZONE", next.simTimeSec, rotationTime, 1, {
+            robotId: robot.robotId,
+            taskId: task.taskId,
+            cells: zone.cells
+          });
+          if (reservation.conflict) {
+            next.trafficDiagnostics.reservationConflictCount += 1;
+            next.trafficDiagnostics.totalWaitTimeSec += config.reservationTimeStepSec;
+            next.trafficDiagnostics.robotWaitTimes[robot.robotId] = (next.trafficDiagnostics.robotWaitTimes[robot.robotId] ?? 0) + config.reservationTimeStepSec;
+            next.robots = next.robots.map((item) =>
+              item.robotId === robot.robotId
+                ? {
+                    ...item,
+                    waitUntilSec: next.simTimeSec + config.reservationTimeStepSec,
+                    waitingReason: `Waiting for rotation zone ${zone.rotationZoneId}`,
+                    conflictTarget: zone.id,
+                    totalWaitTimeSec: (item.totalWaitTimeSec ?? 0) + config.reservationTimeStepSec
+                  }
+                : item
+            );
+            next.eventLog = log(next.eventLog, {
+              timeSec: next.simTimeSec,
+              severity: "warning",
+              entityType: "resource",
+              entityId: zone.id,
+              robotId: robot.robotId,
+              taskId: task.taskId,
+              message: `Rotation zone ${zone.rotationZoneId} is busy; ${robot.robotId} will wait.`
+            });
+            continue;
+          }
+          next.reservationTable = reservation.table;
+        }
         next.robots = next.robots.map((item) =>
           item.robotId === robot.robotId ? { ...item, state: "ROTATING_WITH_RACK", color: robotColors.ROTATING_WITH_RACK, waitUntilSec: next.simTimeSec + rotationTime } : item
         );
@@ -830,7 +976,7 @@ function handleRobotTransitions(layout: WarehouseLayout, state: SimulationState,
 }
 
 export function calculateSimulationMetrics(
-  stateLike: Pick<SimulationState, "robots" | "tasks" | "completedTasks" | "failedTasks" | "stationQueues">,
+  stateLike: Pick<SimulationState, "robots" | "tasks" | "completedTasks" | "failedTasks" | "stationQueues"> & Partial<Pick<SimulationState, "trafficDiagnostics">>,
   simTimeSec: number,
   layout: WarehouseLayout
 ): SimulationMetrics {
@@ -841,6 +987,12 @@ export function calculateSimulationMetrics(
   const averageTaskCycleTimeSec = completedDurations.length > 0 ? completedDurations.reduce((sum, value) => sum + value, 0) / completedDurations.length : 0;
   const busyRobots = stateLike.robots.filter((robot) => !["IDLE", "PARKING", "CHARGING"].includes(robot.state)).length;
   const busyStations = stateLike.stationQueues.filter((queue) => queue.activeRobotId).length;
+  const diagnostics = stateLike.trafficDiagnostics ?? emptyTrafficDiagnostics;
+  const robotUtilizationByState = stateLike.robots.reduce<Record<string, number>>((counts, robot) => {
+    counts[robot.state] = (counts[robot.state] ?? 0) + 1;
+    return counts;
+  }, {});
+  const denominator = Math.max(1, activeTaskCount + stateLike.completedTasks.length + stateLike.failedTasks.length);
   return {
     activeRobotCount: stateLike.robots.length,
     activeTaskCount,
@@ -850,7 +1002,30 @@ export function calculateSimulationMetrics(
     averageTaskCycleTimeSec,
     estimatedThroughputPerHour: simTimeSec > 0 ? (stateLike.completedTasks.length / simTimeSec) * 3600 : 0,
     averageRobotUtilization: stateLike.robots.length > 0 ? busyRobots / stateLike.robots.length : 0,
-    stationUtilization: layout.stations.length > 0 ? busyStations / layout.stations.length : 0
+    stationUtilization: layout.stations.length > 0 ? busyStations / layout.stations.length : 0,
+    totalWaitTimeSec: diagnostics.totalWaitTimeSec,
+    averageWaitTimePerTaskSec: diagnostics.totalWaitTimeSec / denominator,
+    reservationConflictCount: diagnostics.reservationConflictCount,
+    replanCount: diagnostics.replanCount,
+    deadlockCount: diagnostics.deadlockCount,
+    deadlockRecoveryCount: diagnostics.deadlockRecoveryCount,
+    failedDueToTrafficCount: diagnostics.failedDueToTrafficCount,
+    averageQueueWaitTimeSec: 0,
+    maxQueueWaitTimeSec: 0,
+    loadedTravelDistanceM: 0,
+    emptyTravelDistanceM: 0,
+    loadedTravelTimeSec: 0,
+    emptyTravelTimeSec: 0,
+    robotUtilizationByState,
+    stationQueueUtilization:
+      layout.stations.length > 0
+        ? stateLike.stationQueues.reduce((sum, queue) => {
+            const station = layout.stations.find((item) => item.id === queue.stationId);
+            return sum + (station?.maxQueueLength ? queue.waitingRobotIds.length / station.maxQueueLength : 0);
+          }, 0) / layout.stations.length
+        : 0,
+    rotationZoneUtilization: 0,
+    storageReallocationCount: 0
   };
 }
 
@@ -868,6 +1043,14 @@ export function stepSimulation(layout: WarehouseLayout, state: SimulationState, 
   });
   next = handleRobotTransitions(normalized, next, config);
   next = updateStationQueues(normalized, next, config);
+  if (config.deadlockDetectionEnabled) {
+    const detections = detectDeadlocks(next, config);
+    if (detections.length > 0) {
+      const recovery = applyDeadlockRecovery(next, detections, config);
+      next = recovery.state;
+      for (const event of recovery.events) next.eventLog = log(next.eventLog, event);
+    }
+  }
   next.metrics = calculateSimulationMetrics(next, next.simTimeSec, normalized);
   return next;
 }
@@ -889,5 +1072,5 @@ export function reservationCellsForDisplay(state: SimulationState): GridCell[] {
   const currentStep = Math.floor(state.simTimeSec / Math.max(0.1, state.reservationTable.reservationTimeStepSec));
   return Object.entries(state.reservationTable.reservedVertices)
     .filter(([step]) => Number(step) >= currentStep && Number(step) <= currentStep + 10)
-    .flatMap(([, records]) => records.map((record) => record.cell));
+    .flatMap(([, records]) => records.flatMap((record) => record.cells ?? (record.cell ? [record.cell] : [])));
 }
