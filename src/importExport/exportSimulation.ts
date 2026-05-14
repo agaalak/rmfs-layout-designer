@@ -1,10 +1,32 @@
-import { defaultSimulationConfig, type SimulationConfig, type SimulationEvent, type SimulationMetrics, type TaskGenerationMode } from "../models/simulation";
+import type { RmfsOrder } from "../models/order";
+import type { SimulationInventoryBin } from "../models/simulation";
+import {
+  defaultSimulationConfig,
+  type ChargingStrategy,
+  type OrderAssignmentStrategy,
+  type RackSelectionStrategy,
+  type RackStorageStrategy,
+  type RobotAssignmentStrategy,
+  type SimulationConfig,
+  type SimulationEvent,
+  type SimulationMetrics,
+  type StationAssignmentStrategy,
+  type TaskGenerationMode
+} from "../models/simulation";
 
 export function exportSimulationConfigJson(config: SimulationConfig): string {
   return JSON.stringify({ simulationConfig: config, exportedAt: new Date().toISOString() }, null, 2);
 }
 
 const taskModes: TaskGenerationMode[] = ["manual", "random_nearest", "weighted_hot_warm_cold"];
+const strategyOptions = {
+  orderAssignmentStrategy: ["FIFO", "priority_first", "earliest_due_time"] as OrderAssignmentStrategy[],
+  rackSelectionStrategy: ["nearest_rack_with_sku", "most_inventory_for_sku", "hot_warm_cold_weighted", "manual"] as RackSelectionStrategy[],
+  stationAssignmentStrategy: ["nearest_compatible_station", "shortest_queue", "station_type_match"] as StationAssignmentStrategy[],
+  robotAssignmentStrategy: ["nearest_idle_robot", "first_available_robot"] as RobotAssignmentStrategy[],
+  rackStorageStrategy: ["return_home", "nearest_available_storage", "keep_hot_near_station"] as RackStorageStrategy[],
+  chargingStrategy: ["none", "low_battery_to_nearest_charger"] as ChargingStrategy[]
+};
 
 export function importSimulationConfigJson(text: string): { config?: SimulationConfig; errors: string[]; warnings: string[] } {
   let parsed: unknown;
@@ -70,7 +92,17 @@ export function importSimulationConfigJson(text: string): { config?: SimulationC
     }
   }
 
-  const knownKeys = new Set([...numericKeys, ...booleanKeys, "taskGenerationMode"]);
+  for (const [key, options] of Object.entries(strategyOptions) as Array<[keyof typeof strategyOptions, string[]]>) {
+    const value = raw[key as keyof SimulationConfig];
+    if (value === undefined) continue;
+    if (typeof value === "string" && options.includes(value)) {
+      (config as unknown as Record<string, string>)[key] = value;
+    } else {
+      errors.push(`${key} must be one of ${options.join(", ")}.`);
+    }
+  }
+
+  const knownKeys = new Set([...numericKeys, ...booleanKeys, "taskGenerationMode", ...Object.keys(strategyOptions)]);
   for (const key of Object.keys(raw)) {
     if (!knownKeys.has(key as keyof SimulationConfig)) warnings.push(`Ignored unknown simulation config field: ${key}.`);
   }
@@ -79,9 +111,9 @@ export function importSimulationConfigJson(text: string): { config?: SimulationC
 }
 
 export function exportSimulationEventLogCsv(events: SimulationEvent[]): string {
-  const headers = ["timeSec", "severity", "robotId", "taskId", "message"];
+  const headers = ["eventId", "timeSec", "severity", "entityType", "entityId", "robotId", "taskId", "message"];
   const rows = events.map((event) =>
-    [event.timeSec.toFixed(2), event.severity, event.robotId ?? "", event.taskId ?? "", event.message]
+    [event.eventId ?? "", event.timeSec.toFixed(2), event.severity, event.entityType ?? "", event.entityId ?? "", event.robotId ?? "", event.taskId ?? "", event.message]
       .map((value) => JSON.stringify(value))
       .join(",")
   );
@@ -91,4 +123,35 @@ export function exportSimulationEventLogCsv(events: SimulationEvent[]): string {
 export function exportSimulationMetricsCsv(metrics: SimulationMetrics): string {
   const headers = Object.keys(metrics) as Array<keyof SimulationMetrics>;
   return `${headers.join(",")}\n${headers.map((key) => JSON.stringify(metrics[key])).join(",")}\n`;
+}
+
+export function exportOrdersCsv(orders: RmfsOrder[]): string {
+  const headers = ["orderId", "priority", "status", "lineId", "sku", "quantity", "fulfilledQuantity", "assignedRackId", "assignedBinId", "failureReason"];
+  const rows = orders.flatMap((order) =>
+    order.orderLines.map((line) =>
+      [
+        order.orderId,
+        order.priority,
+        order.status,
+        line.lineId,
+        line.sku,
+        line.quantity,
+        line.fulfilledQuantity,
+        line.assignedRackId ?? "",
+        line.assignedBinId ?? "",
+        order.failureReason ?? ""
+      ].map((value) => JSON.stringify(value)).join(",")
+    )
+  );
+  return `${headers.join(",")}\n${rows.join("\n")}\n`;
+}
+
+export function exportInventoryCsv(inventory: SimulationInventoryBin[]): string {
+  const headers = ["rackId", "faceId", "binId", "barcode", "locationId", "sku", "quantity", "reservedQuantity", "maxQuantity"];
+  const rows = inventory.map((bin) =>
+    [bin.rackId, bin.faceId, bin.binId, bin.barcode, bin.locationId, bin.sku ?? "", bin.quantity, bin.reservedQuantity, bin.maxQuantity ?? ""]
+      .map((value) => JSON.stringify(value))
+      .join(",")
+  );
+  return `${headers.join(",")}\n${rows.join("\n")}\n`;
 }

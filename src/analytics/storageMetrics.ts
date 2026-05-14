@@ -12,6 +12,7 @@ export interface StorageMetrics {
   stationCount: number;
   chargingSpotCount: number;
   parkingSpotCount: number;
+  storageLocationCount: number;
   storageDensity: number;
   aisleRatio: number;
   hotWarmColdDistribution: Record<string, number>;
@@ -38,6 +39,7 @@ export function calculateStorageMetrics(layout: WarehouseLayout): StorageMetrics
     stationCount: layout.stations.length,
     chargingSpotCount: layout.chargingSpots.length,
     parkingSpotCount: layout.parkingSpots.length,
+    storageLocationCount: layout.storageLocations?.length ?? 0,
     storageDensity: safeDivide(rackStorageCells, usableCells),
     aisleRatio: safeDivide(aisleCells, usableCells),
     hotWarmColdDistribution: distribution

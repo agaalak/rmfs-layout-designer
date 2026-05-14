@@ -144,6 +144,120 @@ export function validateObjects(layout: WarehouseLayout): ValidationIssue[] {
           objectId: rack.id
         });
       }
+      if ((bin.reservedQuantity ?? 0) < 0) {
+        issues.push({
+          id: `rack_negative_reserved_quantity_${rack.id}_${bin.binId}`,
+          severity: "error",
+          message: `Rack ${rack.rackId} bin ${bin.binId} has a negative reserved quantity.`,
+          cell: rack.homeCell,
+          objectId: rack.id
+        });
+      }
+      if ((bin.reservedQuantity ?? 0) > (bin.quantity ?? 0)) {
+        issues.push({
+          id: `rack_reserved_over_quantity_${rack.id}_${bin.binId}`,
+          severity: "error",
+          message: `Rack ${rack.rackId} bin ${bin.binId} reserves more inventory than is available.`,
+          cell: rack.homeCell,
+          objectId: rack.id
+        });
+      }
+    }
+  }
+
+  const storageCellClaims = new Map<string, string>();
+  for (const location of layout.storageLocations ?? []) {
+    if (location.cells.length === 0) {
+      issues.push({
+        id: `storage_empty_cells_${location.storageLocationId}`,
+        severity: "error",
+        message: `Storage location ${location.storageLocationId} must contain at least one cell.`
+      });
+    }
+    for (const cell of location.cells) {
+      if (!inBounds(cell, layout.grid)) {
+        issues.push({
+          id: `storage_bounds_${location.storageLocationId}_${cell.row}_${cell.col}`,
+          severity: "error",
+          message: `Storage location ${location.storageLocationId} is outside the warehouse boundary.`,
+          cell,
+          objectId: location.storageLocationId
+        });
+      }
+      const key = cellKey(cell);
+      const existing = storageCellClaims.get(key);
+      if (existing && existing !== location.storageLocationId) {
+        issues.push({
+          id: `storage_overlap_${key}_${location.storageLocationId}`,
+          severity: "error",
+          message: `Storage location ${location.storageLocationId} overlaps ${existing} at row ${cell.row}, column ${cell.col}.`,
+          cell,
+          objectId: location.storageLocationId
+        });
+      }
+      storageCellClaims.set(key, location.storageLocationId);
+    }
+    if (location.status === "OCCUPIED" && !location.currentlyStoredRackId) {
+      issues.push({
+        id: `storage_occupied_missing_rack_${location.storageLocationId}`,
+        severity: "error",
+        message: `Storage location ${location.storageLocationId} is occupied but does not reference a rack.`,
+        cell: location.cells[0],
+        objectId: location.storageLocationId
+      });
+    }
+    if (location.currentlyStoredRackId && !layout.racks.some((rack) => rack.id === location.currentlyStoredRackId)) {
+      issues.push({
+        id: `storage_invalid_rack_${location.storageLocationId}`,
+        severity: "error",
+        message: `Storage location ${location.storageLocationId} references a missing rack.`,
+        cell: location.cells[0],
+        objectId: location.storageLocationId
+      });
+    }
+    if (location.approachWaypointIds.length === 0) {
+      issues.push({
+        id: `storage_no_approach_${location.storageLocationId}`,
+        severity: "warning",
+        message: `Storage location ${location.storageLocationId} has no reachable approach waypoint.`,
+        cell: location.cells[0],
+        objectId: location.storageLocationId
+      });
+    }
+  }
+
+  const storageOccupancy = new Map<string, string>();
+  for (const rack of layout.racks) {
+    if (rack.operationalStatus === "STORED" && !rack.currentStorageLocationId) {
+      issues.push({
+        id: `rack_missing_current_storage_${rack.id}`,
+        severity: "error",
+        message: `Stored rack ${rack.rackId} must reference a current storage location.`,
+        cell: rack.homeCell,
+        objectId: rack.id
+      });
+    }
+    if (rack.currentStorageLocationId) {
+      if (!layout.storageLocations?.some((location) => location.storageLocationId === rack.currentStorageLocationId)) {
+        issues.push({
+          id: `rack_invalid_current_storage_${rack.id}`,
+          severity: "error",
+          message: `Rack ${rack.rackId} references missing storage location ${rack.currentStorageLocationId}.`,
+          cell: rack.homeCell,
+          objectId: rack.id
+        });
+      }
+      const existing = storageOccupancy.get(rack.currentStorageLocationId);
+      if (existing && existing !== rack.id) {
+        issues.push({
+          id: `storage_duplicate_occupancy_${rack.currentStorageLocationId}`,
+          severity: "error",
+          message: `Storage location ${rack.currentStorageLocationId} is assigned to more than one rack.`,
+          cell: rack.homeCell,
+          objectId: rack.id
+        });
+      }
+      storageOccupancy.set(rack.currentStorageLocationId, rack.id);
     }
   }
 

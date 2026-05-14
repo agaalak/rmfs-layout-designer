@@ -95,14 +95,13 @@ Current code:
 
 A storage location is a valid place where a rack/pod can be stored.
 
-Current state:
+Current code:
 
-- Storage locations are still mostly represented by rack home cells and rack-storage cells.
-- `StorageLocation` exists as a canonical type in `src/models/rmfsDomain.ts`.
+- `StorageLocation` in `src/models/storage.ts`
+- `storageLocations` persisted on `WarehouseLayout`
+- `ensureStorageLocations` in `src/utils/storageLocations.ts` migrates older layouts from rack home cells/rack-storage cells.
 
-Next step:
-
-- Promote generated rack storage cells into explicit storage-location records with allowed rack types, approach waypoint IDs, current rack ID, and default orientation.
+Storage locations now track cells, allowed rack types, default orientation, approach waypoint IDs, current rack occupancy, reservation, status, zone, and lock state.
 
 ### Rack / Pod
 
@@ -120,10 +119,12 @@ Current code supports:
 - demand class
 - locked constraint flag
 
-Alignment gap:
+Current code now supports:
 
-- Current rack status is implicit. `RackOperationalStatus` is defined in `src/models/rmfsDomain.ts` but not yet stored on every rack.
-- Home/current storage location IDs are not yet first-class fields on every rack.
+- home storage location ID
+- current storage location ID
+- operational status
+- runtime carried/returning status inside `SimulationState.rackStates`
 
 ### RackFace And Bin
 
@@ -150,9 +151,7 @@ Current station data supports:
 - service time
 - queue length
 
-Alignment gap:
-
-- Station service point and queue waypoints are still derived from cells. `StationResourceState` documents the desired resource shape.
+Current simulator runtime tracks active station robot/rack, queue, service timer, and completed service count. Service updates inventory for pick/replenish paths.
 
 ### Charger And ParkingLocation
 
@@ -191,14 +190,12 @@ This is not yet a full RAWSim-O-level discrete-event robot/fleet controller.
 
 RMFS business demand should be separate from robot movement.
 
-Current state:
+Current code:
 
-- `SimulationTask` exists for movement tasks.
-- `RmfsOrder` and `RmfsOrderLine` are defined in `src/models/rmfsDomain.ts`.
-
-Alignment gap:
-
-- Customer orders, order lines, pod/rack selection for SKUs, and order assignment are not yet wired into the UI.
+- `RmfsOrder` and `RmfsOrderLine` in `src/models/order.ts`
+- `OperationalTask` in `src/models/operationalTask.ts`
+- simulation panel Orders & Inventory section
+- generated orders select racks by SKU inventory and complete after station service and rack return
 
 ### Controllers / Decision Modules
 
@@ -216,30 +213,31 @@ Canonical controllers:
 
 Current implementation:
 
-- shortest-path path planning
-- nearest compatible station selection
-- weighted HOT/WARM/COLD task selection
-- return-home rack storage behavior
-- basic reservation traffic control
+- `src/simulation/controllers/orderAssignmentController.ts`
+- `src/simulation/controllers/rackSelectionController.ts`
+- `src/simulation/controllers/stationAssignmentController.ts`
+- `src/simulation/controllers/robotAssignmentController.ts`
+- `src/simulation/controllers/rackStorageController.ts`
+- `src/simulation/controllers/chargingController.ts`
 
-Future implementation:
-
-- explicit controller modules with interchangeable strategies and comparable metrics.
+Strategies are intentionally simple, but explicit: FIFO/priority/due-date order selection, nearest/most-inventory/hot-weighted rack selection, nearest/shortest-queue station selection, first/nearest robot assignment, return-home/nearest/hot-near-station storage selection, and no-op/low-battery charging policy.
 
 ## What Changed In This Pass
 
-- Added `src/models/rmfsDomain.ts` for canonical RMFS types.
-- Added `buildRoutingWaypoints` so graph construction is explicitly waypoint-based.
-- Marked Simulation Mode Experimental rather than over-claiming RAWSim-O-level simulation.
-- Disabled the old Flying-V placeholder option.
-- Updated README and implementation status to distinguish stable layout editing from experimental simulation.
+- Promoted storage locations to first-class layout records.
+- Added order, order-line, inventory snapshot, operational task, and structured event-log models.
+- Added controller modules for the main RMFS decision boundaries.
+- Replaced pure direct rack movement generation with sample order-to-rack-to-station task generation.
+- Added rack/storage status changes during reserve, lift, carry, station service, return, and drop.
+- Added station service inventory updates and order completion.
+- Added explicit pre/post rotation events and orientation updates.
+- Updated Simulation Mode UI so users can trace orders, inventory, controllers, tasks, robots, stations, and event decisions.
 
 ## Remaining Alignment Work
 
-1. Convert rack-storage cells into explicit `StorageLocation` records.
-2. Add rack operational status to the main rack model.
-3. Add customer orders and order lines separate from movement tasks.
-4. Add simple interchangeable decision controllers.
-5. Add pod/rack selection rules based on SKU/bin inventory.
-6. Add rack storage/repositioning rules after station visits.
-7. Keep full MAPF and 3D simulator work out of the stabilization path until the layout editor stays reliable.
+1. Improve traffic control with better wait/replan policies and deadlock recovery.
+2. Add carried-rack footprint reservations.
+3. Add larger order waves, batching, and experiment runs across controller strategies.
+4. Add WHCA* before CBS or more advanced MAPF solvers.
+5. Add battery drain, charger queues, and service-time variability.
+6. Keep full 3D simulator work out until the 2D event/state model remains stable.

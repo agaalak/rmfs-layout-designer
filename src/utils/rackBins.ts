@@ -39,7 +39,9 @@ export function makeBinRecords(
         maxWeightKg: existingBin?.maxWeightKg,
         maxQuantity: existingBin?.maxQuantity,
         sku: existingBin?.sku,
-        quantity: existingBin?.quantity
+        quantity: existingBin?.quantity,
+        reservedQuantity: existingBin?.reservedQuantity,
+        lastUpdatedSimTimeSec: existingBin?.lastUpdatedSimTimeSec
       });
     }
   }
@@ -106,6 +108,7 @@ export function rackBinsToCsv(rack: Rack): string {
     "depthM",
     "heightM",
     "maxQuantity",
+    "reservedQuantity",
     "sku",
     "quantity"
   ];
@@ -126,6 +129,7 @@ export function rackBinsToCsv(rack: Rack): string {
         bin.depthM,
         bin.heightM,
         bin.maxQuantity ?? "",
+        bin.reservedQuantity ?? "",
         bin.sku ?? "",
         bin.quantity ?? ""
       ].map(escape).join(",")
@@ -180,6 +184,7 @@ export function rackBinsFromCsv(rack: Rack, csv: string): Rack {
       depthM: num("depthM") ?? 0.4,
       heightM: num("heightM") ?? 0.3,
       maxQuantity: num("maxQuantity"),
+      reservedQuantity: num("reservedQuantity"),
       sku: get("sku"),
       quantity: num("quantity")
     } satisfies Bin;
@@ -202,4 +207,3 @@ export function rackBinsFromCsv(rack: Rack, csv: string): Rack {
   });
   return { ...rack, faces };
 }
-

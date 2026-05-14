@@ -1,10 +1,33 @@
 import type { GridCell } from "./grid";
+import type { RmfsOrder } from "./order";
+import type { OperationalTask } from "./operationalTask";
 import type { Robot } from "./robot";
+import type { CardinalOrientation } from "./rack";
+import type { StorageLocation, StorageLocationStatus } from "./storage";
 import type { SimulationTask } from "./task";
 
 export type AppMode = "design" | "simulation";
 export type TaskGenerationMode = "manual" | "random_nearest" | "weighted_hot_warm_cold";
 export type SimulationEventSeverity = "info" | "warning" | "error";
+export type SimulationEventEntityType =
+  | "order"
+  | "order_line"
+  | "rack"
+  | "robot"
+  | "station"
+  | "storage_location"
+  | "controller"
+  | "path_planner"
+  | "traffic"
+  | "inventory"
+  | "task";
+
+export type OrderAssignmentStrategy = "FIFO" | "priority_first" | "earliest_due_time";
+export type RackSelectionStrategy = "nearest_rack_with_sku" | "most_inventory_for_sku" | "hot_warm_cold_weighted" | "manual";
+export type StationAssignmentStrategy = "nearest_compatible_station" | "shortest_queue" | "station_type_match";
+export type RobotAssignmentStrategy = "nearest_idle_robot" | "first_available_robot";
+export type RackStorageStrategy = "return_home" | "nearest_available_storage" | "keep_hot_near_station";
+export type ChargingStrategy = "none" | "low_battery_to_nearest_charger";
 
 export interface SimulationConfig {
   robotCount: number;
@@ -23,6 +46,12 @@ export interface SimulationConfig {
   showReservations: boolean;
   showRobotLabels: boolean;
   collisionCheckingEnabled: boolean;
+  orderAssignmentStrategy: OrderAssignmentStrategy;
+  rackSelectionStrategy: RackSelectionStrategy;
+  stationAssignmentStrategy: StationAssignmentStrategy;
+  robotAssignmentStrategy: RobotAssignmentStrategy;
+  rackStorageStrategy: RackStorageStrategy;
+  chargingStrategy: ChargingStrategy;
 }
 
 export interface StationQueue {
@@ -44,11 +73,56 @@ export interface ReservationTableSnapshot {
 }
 
 export interface SimulationEvent {
+  eventId?: string;
   timeSec: number;
   severity: SimulationEventSeverity;
+  entityType?: SimulationEventEntityType;
+  entityId?: string;
+  relatedIds?: Record<string, string | string[] | undefined>;
   message: string;
   robotId?: string;
   taskId?: string;
+  details?: Record<string, unknown>;
+}
+
+export interface SimulationInventoryBin {
+  rackId: string;
+  faceId: string;
+  binId: string;
+  barcode: string;
+  locationId: string;
+  sku?: string;
+  quantity: number;
+  reservedQuantity: number;
+  maxQuantity?: number;
+  lastUpdatedSimTimeSec?: number;
+}
+
+export interface RackRuntimeState {
+  rackId: string;
+  operationalStatus: "STORED" | "RESERVED" | "BEING_CARRIED" | "AT_STATION" | "RETURNING" | "UNAVAILABLE";
+  homeStorageLocationId?: string;
+  currentStorageLocationId?: string;
+  destinationStorageLocationId?: string;
+  currentCell: GridCell;
+  currentOrientationDeg: CardinalOrientation;
+  carriedByRobotId?: string;
+  activeTaskId?: string;
+}
+
+export interface StorageLocationRuntimeState {
+  storageLocationId: string;
+  status: StorageLocationStatus;
+  currentlyStoredRackId?: string;
+  reservedForRackId?: string;
+}
+
+export interface StationRuntimeState {
+  stationId: string;
+  activeRobotId?: string;
+  activeRackId?: string;
+  serviceEndTimeSec?: number;
+  completedServiceCount: number;
 }
 
 export interface SimulationMetrics {
@@ -69,6 +143,15 @@ export interface SimulationState {
   speedMultiplier: number;
   robots: Robot[];
   tasks: SimulationTask[];
+  operationalTasks: OperationalTask[];
+  orders: RmfsOrder[];
+  completedOrders: RmfsOrder[];
+  failedOrders: RmfsOrder[];
+  inventory: SimulationInventoryBin[];
+  rackStates: Record<string, RackRuntimeState>;
+  storageLocationStates: Record<string, StorageLocationRuntimeState>;
+  stationStates: Record<string, StationRuntimeState>;
+  storageLocations: StorageLocation[];
   completedTasks: SimulationTask[];
   failedTasks: SimulationTask[];
   reservationTable: ReservationTableSnapshot;
@@ -94,7 +177,13 @@ export const defaultSimulationConfig: SimulationConfig = {
   showPaths: true,
   showReservations: false,
   showRobotLabels: true,
-  collisionCheckingEnabled: true
+  collisionCheckingEnabled: true,
+  orderAssignmentStrategy: "FIFO",
+  rackSelectionStrategy: "nearest_rack_with_sku",
+  stationAssignmentStrategy: "nearest_compatible_station",
+  robotAssignmentStrategy: "first_available_robot",
+  rackStorageStrategy: "return_home",
+  chargingStrategy: "none"
 };
 
 export const emptySimulationMetrics: SimulationMetrics = {

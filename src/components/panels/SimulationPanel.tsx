@@ -1,9 +1,27 @@
 import type { ChangeEvent, ReactNode } from "react";
 import { useState } from "react";
 import type { WarehouseLayout } from "../../models/layout";
-import type { SimulationConfig, SimulationEventSeverity, TaskGenerationMode } from "../../models/simulation";
+import type {
+  ChargingStrategy,
+  OrderAssignmentStrategy,
+  RackSelectionStrategy,
+  RackStorageStrategy,
+  RobotAssignmentStrategy,
+  SimulationConfig,
+  SimulationEventSeverity,
+  StationAssignmentStrategy,
+  TaskGenerationMode
+} from "../../models/simulation";
 import { downloadTextFile } from "../../importExport/exportLayout";
-import { exportSimulationConfigJson, exportSimulationEventLogCsv, exportSimulationMetricsCsv, importSimulationConfigJson } from "../../importExport/exportSimulation";
+import {
+  exportInventoryCsv,
+  exportOrdersCsv,
+  exportSimulationConfigJson,
+  exportSimulationEventLogCsv,
+  exportSimulationMetricsCsv,
+  importSimulationConfigJson
+} from "../../importExport/exportSimulation";
+import { availableSkuSummary } from "../../simulation/inventory";
 import { useSimulationStore } from "../../store/simulationStore";
 import { cn } from "../../utils/cn";
 
@@ -42,6 +60,10 @@ export function SimulationPanel({ layout, display = "desktop" }: { layout: Wareh
   const [eventQuery, setEventQuery] = useState("");
   const [importMessage, setImportMessage] = useState("");
   const set = <K extends keyof SimulationConfig>(key: K, value: SimulationConfig[K]) => setConfig({ [key]: value } as Partial<SimulationConfig>);
+  const skuSummary = availableSkuSummary(state.inventory);
+  const activeOrders = state.orders.filter((order) => !["COMPLETED", "FAILED"].includes(order.status));
+  const allOrders = [...state.orders, ...state.completedOrders, ...state.failedOrders];
+  const setStrategy = <K extends keyof SimulationConfig>(key: K, value: SimulationConfig[K]) => setConfig({ [key]: value } as Partial<SimulationConfig>);
   const importConfig = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -61,7 +83,7 @@ export function SimulationPanel({ layout, display = "desktop" }: { layout: Wareh
   };
   const filteredEvents = state.eventLog
     .filter((event) => severityFilter === "all" || event.severity === severityFilter)
-    .filter((event) => !eventQuery || event.robotId?.includes(eventQuery) || event.taskId?.includes(eventQuery) || event.message.toLowerCase().includes(eventQuery.toLowerCase()))
+    .filter((event) => !eventQuery || event.robotId?.includes(eventQuery) || event.taskId?.includes(eventQuery) || event.entityId?.includes(eventQuery) || event.message.toLowerCase().includes(eventQuery.toLowerCase()))
     .slice(-120);
 
   return (
@@ -101,6 +123,8 @@ export function SimulationPanel({ layout, display = "desktop" }: { layout: Wareh
         <div><span className="text-muted-foreground">State</span><div className="font-semibold">{state.isRunning ? "Running" : "Paused"}</div></div>
         <div><span className="text-muted-foreground">Robots</span><div className="font-semibold">{state.metrics.activeRobotCount}</div></div>
         <div><span className="text-muted-foreground">Active tasks</span><div className="font-semibold">{state.metrics.activeTaskCount}</div></div>
+        <div><span className="text-muted-foreground">Active orders</span><div className="font-semibold">{activeOrders.length}</div></div>
+        <div><span className="text-muted-foreground">Done orders</span><div className="font-semibold">{state.completedOrders.length}</div></div>
         <div><span className="text-muted-foreground">Completed</span><div className="font-semibold">{state.metrics.completedTaskCount}</div></div>
         <div><span className="text-muted-foreground">Failed</span><div className="font-semibold">{state.metrics.failedTaskCount}</div></div>
         <div><span className="text-muted-foreground">Blocked</span><div className="font-semibold">{state.metrics.blockedRobotCount}</div></div>
@@ -133,6 +157,81 @@ export function SimulationPanel({ layout, display = "desktop" }: { layout: Wareh
       </section>
 
       <section className="grid grid-cols-2 gap-2 rounded-md border border-border bg-white p-2">
+        <div className="col-span-2">
+          <div className="panel-title">Controllers</div>
+          <div className="text-xs text-muted-foreground">Simple RAWSim-O-style decision modules for order, rack, station, robot, storage, and charging choices.</div>
+        </div>
+        <Field label="Order assignment">
+          <select className="field-input" value={config.orderAssignmentStrategy} onChange={(event) => setStrategy("orderAssignmentStrategy", event.target.value as OrderAssignmentStrategy)}>
+            <option value="FIFO">FIFO</option>
+            <option value="priority_first">Priority first</option>
+            <option value="earliest_due_time">Earliest due time</option>
+          </select>
+        </Field>
+        <Field label="Rack selection">
+          <select className="field-input" value={config.rackSelectionStrategy} onChange={(event) => setStrategy("rackSelectionStrategy", event.target.value as RackSelectionStrategy)}>
+            <option value="nearest_rack_with_sku">Nearest rack with SKU</option>
+            <option value="most_inventory_for_sku">Most inventory</option>
+            <option value="hot_warm_cold_weighted">Hot/warm/cold weighted</option>
+            <option value="manual">Manual</option>
+          </select>
+        </Field>
+        <Field label="Station assignment">
+          <select className="field-input" value={config.stationAssignmentStrategy} onChange={(event) => setStrategy("stationAssignmentStrategy", event.target.value as StationAssignmentStrategy)}>
+            <option value="nearest_compatible_station">Nearest compatible</option>
+            <option value="shortest_queue">Shortest queue</option>
+            <option value="station_type_match">Station type match</option>
+          </select>
+        </Field>
+        <Field label="Robot assignment">
+          <select className="field-input" value={config.robotAssignmentStrategy} onChange={(event) => setStrategy("robotAssignmentStrategy", event.target.value as RobotAssignmentStrategy)}>
+            <option value="first_available_robot">First available</option>
+            <option value="nearest_idle_robot">Nearest idle</option>
+          </select>
+        </Field>
+        <Field label="Rack storage">
+          <select className="field-input" value={config.rackStorageStrategy} onChange={(event) => setStrategy("rackStorageStrategy", event.target.value as RackStorageStrategy)}>
+            <option value="return_home">Return home</option>
+            <option value="nearest_available_storage">Nearest available</option>
+            <option value="keep_hot_near_station">Keep hot near station</option>
+          </select>
+        </Field>
+        <Field label="Charging">
+          <select className="field-input" value={config.chargingStrategy} onChange={(event) => setStrategy("chargingStrategy", event.target.value as ChargingStrategy)}>
+            <option value="none">None</option>
+            <option value="low_battery_to_nearest_charger">Low battery to charger</option>
+          </select>
+        </Field>
+      </section>
+
+      <section className="grid gap-2 rounded-md border border-border bg-slate-50 p-2">
+        <div className="panel-title">Orders & Inventory</div>
+        <div className="grid grid-cols-3 gap-2 text-xs">
+          <div><span className="text-muted-foreground">Orders</span><div className="font-semibold">{allOrders.length}</div></div>
+          <div><span className="text-muted-foreground">SKUs</span><div className="font-semibold">{skuSummary.length}</div></div>
+          <div><span className="text-muted-foreground">Storage locs</span><div className="font-semibold">{state.storageLocations.length || layout.storageLocations.length}</div></div>
+        </div>
+        <div className="max-h-28 overflow-auto rounded border border-border bg-white text-xs">
+          {allOrders.length === 0 ? <div className="p-2 text-muted-foreground">Generate tasks to create sample orders from available rack inventory.</div> : null}
+          {allOrders.slice(-6).map((order) => (
+            <div key={order.orderId} className="grid grid-cols-[1fr_auto] gap-2 border-b border-border px-2 py-1">
+              <span>{order.orderId} · {order.orderLines.map((line) => `${line.sku} x${line.quantity}`).join(", ")}</span>
+              <span className="font-semibold">{order.status}</span>
+            </div>
+          ))}
+        </div>
+        <div className="max-h-28 overflow-auto rounded border border-border bg-white text-xs">
+          {skuSummary.slice(0, 8).map((sku) => (
+            <div key={sku.sku} className="grid grid-cols-[1fr_auto] gap-2 border-b border-border px-2 py-1">
+              <span>{sku.sku}</span>
+              <span>{sku.quantity - sku.reservedQuantity} avail / {sku.reservedQuantity} reserved</span>
+            </div>
+          ))}
+          {skuSummary.length === 0 ? <div className="p-2 text-muted-foreground">No SKU inventory snapshot yet.</div> : null}
+        </div>
+      </section>
+
+      <section className="grid grid-cols-2 gap-2 rounded-md border border-border bg-white p-2">
         <div className="col-span-2 panel-title">Tasks</div>
         <Field label="Manual rack">
           <select className="field-input" value={manualRackId ?? layout.racks[0]?.id ?? ""} onChange={(event) => setManualRack(event.target.value)}>
@@ -145,6 +244,15 @@ export function SimulationPanel({ layout, display = "desktop" }: { layout: Wareh
           </select>
         </Field>
         <button className="toolbar-button col-span-2 justify-center" onClick={() => createManualTask(layout)} disabled={!state.initialized}>Create Task</button>
+        <div className="col-span-2 max-h-32 overflow-auto rounded border border-border bg-slate-50 text-xs">
+          {state.operationalTasks.length === 0 ? <div className="p-2 text-muted-foreground">No operational tasks yet.</div> : null}
+          {state.operationalTasks.slice(-8).map((task) => (
+            <div key={task.operationalTaskId} className="grid grid-cols-[1fr_auto] gap-2 border-b border-border px-2 py-1">
+              <span>{task.operationalTaskId} · {task.taskKind} · rack {task.rackId}</span>
+              <span className="font-semibold">{task.status}</span>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="grid grid-cols-2 gap-2 text-xs">
@@ -162,6 +270,27 @@ export function SimulationPanel({ layout, display = "desktop" }: { layout: Wareh
         ))}
       </section>
 
+      <section className="grid gap-2 rounded-md border border-border bg-white p-2">
+        <div className="panel-title">Robots & Stations</div>
+        <div className="max-h-28 overflow-auto text-xs">
+          {state.robots.slice(0, 8).map((robot) => (
+            <div key={robot.robotId} className="grid grid-cols-[1fr_auto] gap-2 border-b border-border py-1">
+              <span>{robot.robotId} {robot.carryingRackId ? `carrying ${robot.carryingRackId}` : ""}</span>
+              <span className="font-semibold">{robot.state}</span>
+            </div>
+          ))}
+          {state.robots.length === 0 ? <div className="text-muted-foreground">Initialize simulation to spawn robots.</div> : null}
+        </div>
+        <div className="max-h-24 overflow-auto text-xs">
+          {state.stationQueues.map((queue) => (
+            <div key={queue.stationId} className="grid grid-cols-[1fr_auto] gap-2 border-b border-border py-1">
+              <span>{layout.stations.find((station) => station.id === queue.stationId)?.stationId ?? queue.stationId}</span>
+              <span>{queue.activeRobotId ? `serving ${queue.activeRobotId}` : "idle"} · q{queue.waitingRobotIds.length}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <section className="grid grid-cols-2 gap-2">
         <div className="col-span-2 panel-title">Exports</div>
         <label className="toolbar-button cursor-pointer justify-center">
@@ -170,6 +299,8 @@ export function SimulationPanel({ layout, display = "desktop" }: { layout: Wareh
         </label>
         <button className="toolbar-button justify-center" onClick={() => downloadTextFile("simulation_config.json", exportSimulationConfigJson(config), "application/json")}>Export config</button>
         <button className="toolbar-button justify-center" onClick={() => downloadTextFile("simulation_metrics.csv", exportSimulationMetricsCsv(state.metrics), "text/csv")}>Export metrics CSV</button>
+        <button className="toolbar-button justify-center" onClick={() => downloadTextFile("simulation_orders.csv", exportOrdersCsv(allOrders), "text/csv")}>Export orders CSV</button>
+        <button className="toolbar-button justify-center" onClick={() => downloadTextFile("simulation_inventory.csv", exportInventoryCsv(state.inventory), "text/csv")}>Export inventory CSV</button>
         <button className="toolbar-button col-span-2 justify-center" onClick={() => downloadTextFile("simulation_event_log.csv", exportSimulationEventLogCsv(state.eventLog), "text/csv")}>Export event log CSV</button>
         {importMessage ? <div className="col-span-2 rounded-md border border-border bg-white px-2 py-1 text-xs text-muted-foreground">{importMessage}</div> : null}
       </section>
@@ -186,7 +317,7 @@ export function SimulationPanel({ layout, display = "desktop" }: { layout: Wareh
           {filteredEvents.length === 0 ? <div className="text-slate-400">No simulation events yet.</div> : null}
           {filteredEvents.map((event, index) => (
             <div key={`${event.timeSec}_${index}`} className={event.severity === "error" ? "text-red-300" : event.severity === "warning" ? "text-amber-300" : "text-slate-100"}>
-              [{event.timeSec.toFixed(1)}] {event.robotId ? `${event.robotId} ` : ""}{event.taskId ? `${event.taskId} ` : ""}{event.message}
+              [{event.timeSec.toFixed(1)}] {event.entityType ? `${event.entityType} ` : ""}{event.robotId ? `${event.robotId} ` : ""}{event.taskId ? `${event.taskId} ` : ""}{event.message}
             </div>
           ))}
         </div>

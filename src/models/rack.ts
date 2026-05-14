@@ -19,6 +19,8 @@ export interface Bin {
   maxQuantity?: number;
   sku?: string;
   quantity?: number;
+  reservedQuantity?: number;
+  lastUpdatedSimTimeSec?: number;
 }
 
 export interface RackFace {
@@ -43,5 +45,8 @@ export interface Rack {
   faces: RackFace[];
   storageZoneId?: string;
   demandClass?: DemandClass;
+  homeStorageLocationId?: string;
+  currentStorageLocationId?: string;
+  operationalStatus?: "STORED" | "RESERVED" | "BEING_CARRIED" | "AT_STATION" | "RETURNING" | "UNAVAILABLE";
   locked?: boolean;
 }

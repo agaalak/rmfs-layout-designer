@@ -39,6 +39,15 @@
 - Canvas simulation layers for robots, yaw arrows, carried racks, planned paths, reservation overlays, and station queue occupancy.
 - Simulation control panel with initialize, generate tasks, create manual task, play/pause/step/reset, speed multiplier, display toggles, settings, event filters, and simulation config/log/metrics exports.
 - Versioned layout model support for optional simulation config.
+- First-class persisted `StorageLocation` records with allowed rack types, default orientation, approach waypoint IDs, current rack occupancy, reservation status, and import migration from older rack-home-cell layouts.
+- Rack operational fields for home/current storage location and statuses such as `STORED`, `RESERVED`, `BEING_CARRIED`, `AT_STATION`, `RETURNING`, and `UNAVAILABLE`.
+- Order and order-line models with priority, status, SKU demand, assigned rack/bin, fulfillment quantity, completion, and failure reason.
+- Inventory snapshots derived from rack bins, including SKU, quantity, reserved quantity, and simulation update timestamps.
+- Explicit controller modules for order assignment, rack selection, station assignment, robot assignment, rack storage/reallocation, and charging policy boundaries.
+- Operational task pipeline layered over movement tasks, with `PICK_ORDER`, `REPLENISH_RACK`, `MOVE_RACK_TO_STATION`, return/storage states, timestamps, and route segments.
+- Simulation Mode now creates sample orders from actual rack inventory, selects racks by SKU availability, reserves inventory/racks/storage, updates inventory at service, completes orders after rack return, and records structured operational events.
+- Rack storage/reallocation strategies include return home, nearest available storage, and keep hot racks near stations.
+- Simulation UI now includes Orders & Inventory, Controllers, operational task trace, robot/station state summaries, and orders/inventory CSV exports.
 - Canonical RMFS domain type definitions for waypoints, storage locations, rack/pod operational state, station resources, orders, and controller boundaries.
 - Graph construction now derives routing waypoints before building road edges.
 - Playwright E2E suite for startup, manual editing, validation, import/export, Mode B, Hybrid, and Experimental Simulation Mode.
@@ -54,10 +63,10 @@
 - Heatmaps are analytical overlays but not yet a full multi-layer GIS-style explorer.
 - SVG export captures layout cells and core layout coloring; PNG captures the current rendered canvas.
 - Simulation Mode is explicitly Experimental. Reservation handling is useful for early playback, but it is not a complete MAPF solver and does not prove deadlock freedom.
-- Rack rotation-zone routing is modeled in route planning; explicit animated rack rotation dwell/control remains a later refinement.
+- Rack rotation-zone routing now has explicit pre/post rotation states, dwell timing, orientation updates, and event-log entries. It is still a simple single-robot-at-zone treatment, not a full rotation-zone capacity scheduler.
 - Loaded-robot reservations currently focus on robot cell conflicts; full carried-rack swept-envelope reservation is still future work.
-- Storage locations are not yet first-class persisted records; they are still inferred from rack home cells and rack-storage cells.
-- Orders/order lines and SKU-based rack selection are documented but not yet part of the main UI workflow.
+- Order generation uses sample SKU demand from current inventory. It is not yet a full customer-order wave/batch optimizer.
+- Replenishment support exists in inventory helpers and station service paths, but the UI still focuses mainly on pick-order generation.
 - Responsive behavior is improved with drawers, but phone-sized editing is still not a primary target and drawers still need focus-trap/Escape-close hardening.
 
 ## Missing Features
@@ -90,14 +99,15 @@
 - UX pass reorganized the toolbox, property panels, Analyze workflow, candidate drawer, and Experimental Simulation presentation.
 - UX pass split Vite chunks so the previous large single-bundle warning is gone.
 - Responsive follow-up added drawer panels and `npm run test:e2e:smoke` for faster UI regressions.
+- RMFS behavior pass promoted storage locations, orders, inventory, controller strategies, operational tasks, rack lifecycle state, station inventory service, rotation events, and storage reallocation into real simulator code.
 
 ## Test Status
 
 - `npm install`: passed, 0 vulnerabilities.
 - `npm run build`: passed. Manual chunks now avoid the previous large single-bundle warning.
-- `npm test -- --run`: 10 files passed, 52 tests passed.
-- `npm run test:e2e:smoke -- --workers=1`: 3 browser smoke tests passed.
-- `npm run test:e2e -- --workers=1`: 11 browser tests passed.
+- `npm test -- --run`: 11 files passed, 62 tests passed.
+- `npm run test:e2e -- --workers=1 --grep "Mode B|experimental simulation"`: 2 browser tests passed after storage-normalization performance repair.
+- `npm run test:e2e -- --workers=1`: 11 browser tests passed after final rerun.
 - Browser QA through Playwright at `http://127.0.0.1:5174/`: passed for app load, demo layout, manual editing, Mode B candidate workflow, Hybrid lock preservation, Files import/export, Analyze validation/analytics, and Experimental Simulation one-cycle playback.
 
 ## Completion Plan
@@ -106,5 +116,6 @@
 2. Add focus trap and Escape-close behavior to responsive drawers and dialogs.
 3. Improve candidate previews with thumbnail mini-maps.
 4. Add virtualized bin tables for very large rack configurations.
-5. Deepen the simulator with explicit rack-rotation dwell events, richer charging/battery policies, and better deadlock recovery.
-6. Continue toward full MAPF, CAD/DXF import, 3D view, and cloud persistence in later passes.
+5. Improve traffic control with deadlock detection, wait/replan policies, and carried-rack footprint reservations.
+6. Add MAPF planning only after the operational RMFS model remains stable across larger scenarios.
+7. Continue toward CAD/DXF import, 3D view, and cloud persistence in later passes.

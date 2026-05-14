@@ -1,5 +1,7 @@
 import type { GridCell } from "../models/grid";
 import type { WarehouseLayout } from "../models/layout";
+import type { RmfsOrder } from "../models/order";
+import type { OperationalTask } from "../models/operationalTask";
 import type { Robot, RobotState } from "../models/robot";
 import {
   defaultSimulationConfig,
@@ -12,11 +14,20 @@ import {
 } from "../models/simulation";
 import type { SimulationRoutePlan, SimulationTask } from "../models/task";
 import { buildRoadGraph, rackApproachNodes } from "../graph/graphBuilder";
+import { shortestPathBetweenSets } from "../graph/shortestPath";
 import { validateLayout } from "../validation/validateLayout";
+import { validateSimulationReadiness } from "../validation/validateSimulationReadiness";
 import { cellKey, manhattanMeters, parseCellKey } from "../utils/gridMath";
 import { rackOccupiedCells } from "../utils/rackFootprint";
+import { ensureStorageLocations } from "../utils/storageLocations";
 import { findNearestRotationZonePath, findPathToNearestRackApproach, findPathToStationQueue, nearestCompatibleStation } from "./pathPlanner";
 import { addWaitSteps, createReservationTable, reservePath } from "./reservationTable";
+import { inventoryFromLayout, pickInventory, replenishInventory, reserveInventory, applyPickToOrder } from "./inventory";
+import { generateSampleOrders } from "./orderGeneration";
+import { selectRackForOrderLine } from "./controllers/rackSelectionController";
+import { selectStationForRack } from "./controllers/stationAssignmentController";
+import { selectStorageDestination } from "./controllers/rackStorageController";
+import { selectRobotForCell } from "./controllers/robotAssignmentController";
 
 const robotColors: Record<RobotState, string> = {
   IDLE: "#64748b",
@@ -47,19 +58,24 @@ function yawBetween(from: GridCell, to: GridCell) {
 }
 
 function log(eventLog: SimulationEvent[], event: SimulationEvent): SimulationEvent[] {
-  return [...eventLog, event].slice(-500);
+  return [...eventLog, { eventId: event.eventId ?? `event_${eventLog.length + 1}_${Math.round(event.timeSec * 1000)}`, ...event }].slice(-500);
 }
 
 export function validateSimulationStart(layout: WarehouseLayout): string[] {
   const issues: string[] = [];
-  const validation = validateLayout(layout);
+  const normalized = layout.storageLocations?.length ? layout : ensureStorageLocations(layout);
+  const readiness = validateSimulationReadiness(normalized);
+  const validation = readiness.validation;
   if (!validation.isValid) issues.push("Layout validation must pass before simulation starts.");
-  if (layout.racks.length === 0) issues.push("Simulation requires at least one rack.");
-  if (layout.stations.length === 0) issues.push("Simulation requires at least one station.");
-  if (layout.cells.filter((cell) => ["ROAD", "QUEUE", "STATION", "CHARGING", "PARKING", "ROTATION"].includes(cell.cellType)).length === 0) {
+  for (const messages of Object.values(readiness.categories)) issues.push(...messages);
+  if (normalized.racks.length === 0) issues.push("Simulation requires at least one rack.");
+  if (normalized.stations.length === 0) issues.push("Simulation requires at least one station.");
+  if (normalized.storageLocations.length === 0) issues.push("Simulation requires storage locations for rack pickup and return.");
+  if (inventoryFromLayout(normalized).filter((bin) => bin.sku && bin.quantity > 0).length === 0) issues.push("Simulation requires at least one SKU with positive rack inventory.");
+  if (normalized.cells.filter((cell) => ["ROAD", "QUEUE", "STATION", "CHARGING", "PARKING", "ROTATION"].includes(cell.cellType)).length === 0) {
     issues.push("Simulation requires at least one traversable graph cell.");
   }
-  const spawnCells = getRobotSpawnCells(layout, 1);
+  const spawnCells = getRobotSpawnCells(normalized, 1);
   if (spawnCells.length === 0) issues.push("Simulation requires at least one parking, charging, or perimeter road spawn location.");
   return issues;
 }
@@ -77,7 +93,8 @@ export function getRobotSpawnCells(layout: WarehouseLayout, count: number): Grid
 }
 
 export function initializeSimulation(layout: WarehouseLayout, config: SimulationConfig = defaultSimulationConfig): SimulationState {
-  const spawnCells = getRobotSpawnCells(layout, config.robotCount);
+  const normalized = layout.storageLocations?.length ? layout : ensureStorageLocations(layout);
+  const spawnCells = getRobotSpawnCells(normalized, config.robotCount);
   const robots: Robot[] = spawnCells.map((cell, index) => ({
     robotId: `robot_${String(index + 1).padStart(3, "0")}`,
     robotTypeId: "standard_rmfs_bot",
@@ -102,21 +119,64 @@ export function initializeSimulation(layout: WarehouseLayout, config: Simulation
     {
       timeSec: 0,
       severity: spawnCells.length > 0 ? "info" : "error",
+      entityType: "robot",
       message: spawnCells.length > 0 ? `Initialized ${robots.length} robots.` : "No valid robot spawn locations found."
     }
   ];
+  const storageLocationStates = Object.fromEntries(
+    normalized.storageLocations.map((location) => [
+      location.storageLocationId,
+      {
+        storageLocationId: location.storageLocationId,
+        status: location.status,
+        currentlyStoredRackId: location.currentlyStoredRackId,
+        reservedForRackId: location.reservedForRackId
+      }
+    ])
+  );
+  const rackStates = Object.fromEntries(
+    normalized.racks.map((rack) => [
+      rack.id,
+      {
+        rackId: rack.id,
+        operationalStatus: rack.operationalStatus ?? "STORED",
+        homeStorageLocationId: rack.homeStorageLocationId,
+        currentStorageLocationId: rack.currentStorageLocationId ?? rack.homeStorageLocationId,
+        currentCell: rack.homeCell,
+        currentOrientationDeg: rack.currentOrientationDeg
+      }
+    ])
+  );
+  const stationStates = Object.fromEntries(
+    normalized.stations.map((station) => [
+      station.id,
+      {
+        stationId: station.id,
+        completedServiceCount: 0
+      }
+    ])
+  );
   return {
     simTimeSec: 0,
     isRunning: false,
     speedMultiplier: 1,
     robots,
     tasks: [],
+    operationalTasks: [],
+    orders: [],
+    completedOrders: [],
+    failedOrders: [],
+    inventory: inventoryFromLayout(normalized),
+    rackStates,
+    storageLocationStates,
+    stationStates,
+    storageLocations: normalized.storageLocations,
     completedTasks: [],
     failedTasks: [],
     reservationTable: createReservationTable(config.reservationTimeStepSec),
-    stationQueues: layout.stations.map((station): StationQueue => ({ stationId: station.id, waitingRobotIds: [] })),
+    stationQueues: normalized.stations.map((station): StationQueue => ({ stationId: station.id, waitingRobotIds: [] })),
     eventLog,
-    metrics: calculateSimulationMetrics({ robots, tasks: [], completedTasks: [], failedTasks: [], stationQueues: [] }, 0, layout),
+    metrics: calculateSimulationMetrics({ robots, tasks: [], completedTasks: [], failedTasks: [], stationQueues: [] }, 0, normalized),
     initialized: true
   };
 }
@@ -128,6 +188,15 @@ export function resetSimulation(config: SimulationConfig = defaultSimulationConf
     speedMultiplier: 1,
     robots: [],
     tasks: [],
+    operationalTasks: [],
+    orders: [],
+    completedOrders: [],
+    failedOrders: [],
+    inventory: [],
+    rackStates: {},
+    storageLocationStates: {},
+    stationStates: {},
+    storageLocations: [],
     completedTasks: [],
     failedTasks: [],
     reservationTable: createReservationTable(config.reservationTimeStepSec),
@@ -159,21 +228,148 @@ export function createTaskForRackStation(layout: WarehouseLayout, rackId: string
     status: "PENDING",
     createdAtSec: simTimeSec,
     requiredRackFace: station.acceptedRackFaces[0],
-    requiredStationOrientationDeg: station.requiredRackOrientationDeg
+    requiredStationOrientationDeg: station.requiredRackOrientationDeg,
+    sourceStorageLocationId: rack.currentStorageLocationId ?? rack.homeStorageLocationId,
+    destinationStorageLocationId: rack.homeStorageLocationId,
+    serviceKind: station.stationType === "REPLENISH" ? "REPLENISH" : station.stationType === "PICK" || station.stationType === "COMBI" ? "PICK" : "DWELL"
+  };
+}
+
+function createOperationalTaskForTask(task: SimulationTask, simTimeSec: number): OperationalTask {
+  return {
+    operationalTaskId: task.operationalTaskId ?? `op_${task.taskId}`,
+    orderId: task.orderId,
+    orderLineIds: task.orderLineIds ?? [],
+    taskKind: task.serviceKind === "REPLENISH" ? "REPLENISH_RACK" : task.orderId ? "PICK_ORDER" : "MOVE_RACK_TO_STATION",
+    rackId: task.rackId,
+    stationId: task.stationId ?? "",
+    robotId: task.robotId,
+    sourceStorageLocationId: task.sourceStorageLocationId,
+    destinationStorageLocationId: task.destinationStorageLocationId,
+    status: "PLANNED",
+    timestamps: { plannedAtSec: simTimeSec }
   };
 }
 
 export function generateSimulationTasks(layout: WarehouseLayout, config: SimulationConfig, simTimeSec: number): SimulationTask[] {
-  const racks = config.taskGenerationMode === "weighted_hot_warm_cold" ? weightedRackSequence(layout) : layout.racks;
+  const normalized = layout.storageLocations?.length ? layout : ensureStorageLocations(layout);
+  const racks = config.taskGenerationMode === "weighted_hot_warm_cold" ? weightedRackSequence(normalized) : normalized.racks;
   const tasks: SimulationTask[] = [];
   for (let index = 0; index < config.taskCount && racks.length > 0; index += 1) {
     const rack = racks[index % racks.length];
-    const station = nearestCompatibleStation(layout, rack);
+    const station = nearestCompatibleStation(normalized, rack);
     if (!station) continue;
-    const task = createTaskForRackStation(layout, rack.id, station.id, simTimeSec, config.taskCount - index);
+    const task = createTaskForRackStation(normalized, rack.id, station.id, simTimeSec, config.taskCount - index);
     if (task) tasks.push(task);
   }
   return tasks;
+}
+
+export function generateOperationalSimulationWork(layout: WarehouseLayout, state: SimulationState, config: SimulationConfig) {
+  const normalized = layout.storageLocations?.length ? layout : ensureStorageLocations(layout);
+  const inventory = state.inventory.length > 0 ? state.inventory : inventoryFromLayout(normalized);
+  const generatedOrders = generateSampleOrders(inventory, config.taskCount, state.simTimeSec, state.orders.length + state.completedOrders.length + state.failedOrders.length);
+  let nextInventory = inventory;
+  const tasks: SimulationTask[] = [];
+  const operationalTasks: OperationalTask[] = [];
+  const failedOrders: RmfsOrder[] = [];
+  const eventLog = [...state.eventLog];
+  const rackStates = { ...state.rackStates };
+  const storageLocationStates = { ...state.storageLocationStates };
+
+  for (const [orderIndex, order] of generatedOrders.entries()) {
+    const line = order.orderLines[0];
+    const selectedRack = selectRackForOrderLine(normalized, nextInventory, rackStates, line, config.rackSelectionStrategy);
+    if (!selectedRack.rack || !selectedRack.bin) {
+      const failedOrder: RmfsOrder = { ...order, status: "FAILED", failureReason: selectedRack.reason ?? "No rack selected." };
+      failedOrders.push(failedOrder);
+      generatedOrders[orderIndex] = failedOrder;
+      eventLog.push({
+        timeSec: state.simTimeSec,
+        severity: "error",
+        entityType: "order",
+        entityId: failedOrder.orderId,
+        message: `Order ${failedOrder.orderId} failed: ${failedOrder.failureReason}`
+      });
+      continue;
+    }
+    const station = selectStationForRack(normalized, selectedRack.rack, config.stationAssignmentStrategy, state.stationQueues);
+    if (!station) {
+      const failedOrder: RmfsOrder = { ...order, status: "FAILED", failureReason: `No compatible station for rack ${selectedRack.rack.rackId}.` };
+      failedOrders.push(failedOrder);
+      generatedOrders[orderIndex] = failedOrder;
+      eventLog.push({
+        timeSec: state.simTimeSec,
+        severity: "error",
+        entityType: "station",
+        entityId: order.orderId,
+        message: `Order ${order.orderId} failed: no compatible station for rack ${selectedRack.rack.rackId}.`
+      });
+      continue;
+    }
+    const destination = selectStorageDestination(normalized, selectedRack.rack, storageLocationStates, config.rackStorageStrategy, station.cell);
+    const task = createTaskForRackStation(normalized, selectedRack.rack.id, station.id, state.simTimeSec, config.taskCount - tasks.length);
+    if (!task) continue;
+    task.taskType = "PICK_ORDER";
+    task.orderId = order.orderId;
+    task.orderLineIds = [line.lineId];
+    task.operationalTaskId = `op_${task.taskId}`;
+    task.destinationStorageLocationId = destination?.storageLocationId ?? selectedRack.rack.homeStorageLocationId;
+    task.selectedBins = [{ lineId: line.lineId, binId: selectedRack.bin.binId, rackId: selectedRack.rack.id, sku: line.sku, quantity: line.quantity }];
+    task.serviceKind = station.stationType === "REPLENISH" ? "REPLENISH" : "PICK";
+    nextInventory = reserveInventory(nextInventory, selectedRack.bin.binId, line.quantity);
+    rackStates[selectedRack.rack.id] = {
+      ...(rackStates[selectedRack.rack.id] ?? {
+        rackId: selectedRack.rack.id,
+        currentCell: selectedRack.rack.homeCell,
+        currentOrientationDeg: selectedRack.rack.currentOrientationDeg
+      }),
+      operationalStatus: "RESERVED",
+      activeTaskId: task.taskId
+    };
+    if (selectedRack.rack.currentStorageLocationId && storageLocationStates[selectedRack.rack.currentStorageLocationId]) {
+      storageLocationStates[selectedRack.rack.currentStorageLocationId] = {
+        ...storageLocationStates[selectedRack.rack.currentStorageLocationId],
+        reservedForRackId: selectedRack.rack.id,
+        status: "RESERVED"
+      };
+    }
+    if (destination) {
+      storageLocationStates[destination.storageLocationId] = {
+        ...(storageLocationStates[destination.storageLocationId] ?? { storageLocationId: destination.storageLocationId, status: "EMPTY" }),
+        reservedForRackId: selectedRack.rack.id,
+        status: destination.storageLocationId === selectedRack.rack.currentStorageLocationId ? "RESERVED" : "RESERVED"
+      };
+    }
+    const assignedOrder: RmfsOrder = {
+      ...order,
+      status: "ASSIGNED",
+      assignedStationId: station.id,
+      orderLines: order.orderLines.map((item) =>
+        item.lineId === line.lineId ? { ...item, status: "ASSIGNED", assignedRackId: selectedRack.rack!.id, assignedBinId: selectedRack.bin!.binId } : item
+      )
+    };
+    tasks.push(task);
+    operationalTasks.push(createOperationalTaskForTask(task, state.simTimeSec));
+    eventLog.push(
+      { timeSec: state.simTimeSec, severity: "info", entityType: "order", entityId: order.orderId, taskId: task.taskId, message: `Order ${order.orderId} created for ${line.quantity} x ${line.sku}.` },
+      { timeSec: state.simTimeSec, severity: "info", entityType: "controller", entityId: "rackSelection", taskId: task.taskId, message: `Rack ${selectedRack.rack.rackId} selected for SKU ${line.sku}.` },
+      { timeSec: state.simTimeSec, severity: "info", entityType: "controller", entityId: "stationAssignment", taskId: task.taskId, message: `Station ${station.stationId} selected for order ${order.orderId}.` },
+      { timeSec: state.simTimeSec, severity: "info", entityType: "controller", entityId: "rackStorage", taskId: task.taskId, message: `Destination storage ${task.destinationStorageLocationId ?? "home"} selected for rack ${selectedRack.rack.rackId}.` }
+    );
+    generatedOrders[orderIndex] = assignedOrder;
+  }
+
+  return {
+    orders: generatedOrders,
+    failedOrders,
+    tasks,
+    operationalTasks,
+    inventory: nextInventory,
+    rackStates,
+    storageLocationStates,
+    eventLog: eventLog.slice(-500)
+  };
 }
 
 function planTaskRoute(layout: WarehouseLayout, robot: Robot, task: SimulationTask): SimulationRoutePlan | undefined {
@@ -185,13 +381,21 @@ function planTaskRoute(layout: WarehouseLayout, robot: Robot, task: SimulationTa
   const pickupApproach = emptyPathToRack.at(-1)!;
   const needsRotation = rack.currentOrientationDeg !== station.requiredRackOrientationDeg;
   const preRotation = needsRotation ? findNearestRotationZonePath(layout, pickupApproach, station.requiredRackOrientationDeg) : [];
+  if (needsRotation && preRotation.length === 0) return undefined;
   const stationStart = preRotation.at(-1) ?? pickupApproach;
   const loadedPathToStation = findPathToStationQueue(layout, stationStart, station);
   if (loadedPathToStation.length === 0) return undefined;
   const stationArrival = loadedPathToStation.at(-1)!;
   const postRotation = needsRotation ? findNearestRotationZonePath(layout, stationArrival, rack.currentOrientationDeg) : [];
+  if (needsRotation && postRotation.length === 0) return undefined;
   const returnStart = postRotation.at(-1) ?? stationArrival;
-  const returnPath = findPathToNearestRackApproach(layout, returnStart, rack);
+  let returnPath = findPathToNearestRackApproach(layout, returnStart, rack);
+  const destination = layout.storageLocations?.find((location) => location.storageLocationId === task.destinationStorageLocationId);
+  if (destination?.approachWaypointIds.length) {
+    const graph = buildRoadGraph(layout);
+    const result = shortestPathBetweenSets(graph, [cellKey(returnStart)], destination.approachWaypointIds);
+    returnPath = result?.path.map(parseCellKey) ?? returnPath;
+  }
   if (returnPath.length === 0) return undefined;
   return {
     emptyPathToRack,
@@ -281,7 +485,25 @@ function assignTasks(layout: WarehouseLayout, state: SimulationState, config: Si
   let next = structuredClone(state) as SimulationState;
   const pending = [...next.tasks].filter((task) => task.status === "PENDING").sort((a, b) => b.priority - a.priority);
   for (const task of pending) {
-    const robot = next.robots.find((candidate) => ["IDLE", "PARKING", "CHARGING"].includes(candidate.state) && !candidate.assignedTaskId);
+    const rack = layout.racks.find((item) => item.id === task.rackId);
+    const station = layout.stations.find((item) => item.id === task.stationId);
+    if (!rack || !station) continue;
+    const rackState = next.rackStates[task.rackId];
+    if (rackState && !["STORED", "RESERVED"].includes(rackState.operationalStatus)) continue;
+    const queue = next.stationQueues.find((item) => item.stationId === task.stationId);
+    const occupiedQueueSlots = (queue?.waitingRobotIds.length ?? 0) + (queue?.activeRobotId ? 1 : 0);
+    if (queue && occupiedQueueSlots >= station.maxQueueLength) {
+      next.eventLog = log(next.eventLog, {
+        timeSec: next.simTimeSec,
+        severity: "warning",
+        entityType: "station",
+        entityId: station.id,
+        taskId: task.taskId,
+        message: `Task ${task.taskId} delayed: station ${station.stationId} queue is full.`
+      });
+      continue;
+    }
+    const robot = selectRobotForCell(layout, next.robots, rack.homeCell, config.robotAssignmentStrategy);
     if (!robot) break;
     const routePlan = planTaskRoute(layout, robot, task);
     if (!routePlan) {
@@ -302,7 +524,8 @@ function assignTasks(layout: WarehouseLayout, state: SimulationState, config: Si
             currentPath: reservation.path,
             routeIndex: 0,
             segmentProgressM: 0,
-            pathProgress: 0
+            pathProgress: 0,
+            routePhase: "TO_RACK"
           }
         : item
     );
@@ -311,7 +534,27 @@ function assignTasks(layout: WarehouseLayout, state: SimulationState, config: Si
         ? { ...item, status: "ASSIGNED", robotId: robot.robotId, assignedAtSec: next.simTimeSec, routePlan }
         : item
     );
-    next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "info", robotId: robot.robotId, taskId: task.taskId, message: `Task ${task.taskId} assigned to ${robot.robotId}.` });
+    next.operationalTasks = next.operationalTasks.map((item) =>
+      item.operationalTaskId === task.operationalTaskId
+        ? { ...item, robotId: robot.robotId, status: "ASSIGNED", timestamps: { ...item.timestamps, assignedAtSec: next.simTimeSec }, routePlan: {
+          pathToRackApproach: routePlan.emptyPathToRack,
+          pathToPreStationRotationZone: routePlan.pathToPreStationRotationZone,
+          pathToStationQueue: routePlan.loadedPathToStation,
+          pathToPostStationRotationZone: routePlan.pathToPostStationRotationZone,
+          pathToStorageApproach: routePlan.returnPath
+        } }
+        : item
+    );
+    next.rackStates[task.rackId] = {
+      ...(next.rackStates[task.rackId] ?? {
+        rackId: task.rackId,
+        currentCell: rack.homeCell,
+        currentOrientationDeg: rack.currentOrientationDeg
+      }),
+      operationalStatus: "RESERVED",
+      activeTaskId: task.taskId
+    };
+    next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "info", entityType: "controller", entityId: "robotAssignment", robotId: robot.robotId, taskId: task.taskId, message: `Task ${task.taskId} assigned to ${robot.robotId}.` });
   }
   return next;
 }
@@ -326,24 +569,103 @@ function updateStationQueues(layout: WarehouseLayout, state: SimulationState, co
     const active = queue.activeRobotId ? next.robots.find((robot) => robot.robotId === queue.activeRobotId) : undefined;
     if (active && queue.serviceEndTimeSec !== undefined && next.simTimeSec >= queue.serviceEndTimeSec) {
       const task = robotTask(next, active);
-      const returnPath = task?.routePlan ? concatPaths([task.routePlan.pathToPostStationRotationZone ?? [], task.routePlan.returnPath]) : [];
+      if (task?.selectedBins && task.serviceKind === "PICK") {
+        for (const selected of task.selectedBins) {
+          next.inventory = pickInventory(next.inventory, selected.binId, selected.quantity, next.simTimeSec);
+        }
+        next.orders = next.orders.map((order) =>
+          order.orderId === task.orderId
+            ? applyPickToOrder(
+                { ...order, status: "IN_PROGRESS" },
+                task.orderLineIds ?? [],
+                task.selectedBins!.map((bin) => ({ lineId: bin.lineId, quantity: bin.quantity, binId: bin.binId, rackId: bin.rackId })),
+                next.simTimeSec
+              )
+            : order
+        );
+        const completedNow = next.orders.filter((order) => order.orderId === task.orderId && order.status === "COMPLETED");
+        next.completedOrders = [...next.completedOrders, ...completedNow.filter((order) => !next.completedOrders.some((item) => item.orderId === order.orderId))];
+        next.orders = next.orders.filter((order) => order.status !== "COMPLETED");
+        next.eventLog = log(next.eventLog, {
+          timeSec: next.simTimeSec,
+          severity: "info",
+          entityType: "inventory",
+          entityId: task.rackId,
+          taskId: task.taskId,
+          robotId: active.robotId,
+          message: `Inventory picked for order ${task.orderId ?? "manual task"}.`
+        });
+      } else if (task?.serviceKind === "REPLENISH") {
+        const sku = task.selectedBins?.[0]?.sku ?? "SKU-REPLENISH";
+        next.inventory = replenishInventory(next.inventory, task.rackId, sku, task.selectedBins?.[0]?.quantity ?? 5, next.simTimeSec);
+        next.eventLog = log(next.eventLog, {
+          timeSec: next.simTimeSec,
+          severity: "info",
+          entityType: "inventory",
+          entityId: task.rackId,
+          taskId: task.taskId,
+          robotId: active.robotId,
+          message: `Inventory replenished on rack ${task.rackId}.`
+        });
+      }
+      const returnPath = task?.routePlan
+        ? task.routePlan.pathToPostStationRotationZone?.length
+          ? task.routePlan.pathToPostStationRotationZone
+          : task.routePlan.returnPath
+        : [];
       next.robots = next.robots.map((robot) =>
         robot.robotId === active.robotId
-          ? { ...robot, state: "RETURNING_RACK", color: robotColors.RETURNING_RACK, currentPath: returnPath, routeIndex: 0, segmentProgressM: 0, pathProgress: 0 }
+          ? {
+              ...robot,
+              state: "RETURNING_RACK",
+              color: robotColors.RETURNING_RACK,
+              currentPath: returnPath,
+              routeIndex: 0,
+              segmentProgressM: 0,
+              pathProgress: 0,
+              routePhase: task?.routePlan?.pathToPostStationRotationZone?.length ? "POST_ROTATION" : "RETURN_TO_STORAGE"
+            }
           : robot
       );
+      if (task) {
+        next.rackStates[task.rackId] = {
+          ...next.rackStates[task.rackId],
+          operationalStatus: "RETURNING",
+          destinationStorageLocationId: task.destinationStorageLocationId
+        };
+        next.operationalTasks = next.operationalTasks.map((item) =>
+          item.operationalTaskId === task.operationalTaskId ? { ...item, status: "RETURNING", timestamps: { ...item.timestamps, returningAtSec: next.simTimeSec } } : item
+        );
+      }
       queue.activeRobotId = undefined;
       queue.serviceEndTimeSec = undefined;
-      next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "info", robotId: active.robotId, taskId: active.assignedTaskId, message: `${active.robotId} completed station service.` });
+      if (next.stationStates[queue.stationId]) {
+        next.stationStates[queue.stationId] = { ...next.stationStates[queue.stationId], activeRobotId: undefined, activeRackId: undefined, serviceEndTimeSec: undefined, completedServiceCount: next.stationStates[queue.stationId].completedServiceCount + 1 };
+      }
+      next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "info", entityType: "station", entityId: queue.stationId, robotId: active.robotId, taskId: active.assignedTaskId, message: `${active.robotId} completed station service.` });
     }
     if (!queue.activeRobotId && queue.waitingRobotIds.length > 0) {
       const robotId = queue.waitingRobotIds.shift()!;
+      const robotTaskId = next.robots.find((robot) => robot.robotId === robotId)?.assignedTaskId;
+      const task = next.tasks.find((item) => item.taskId === robotTaskId);
       queue.activeRobotId = robotId;
       queue.serviceEndTimeSec = next.simTimeSec + config.stationServiceTimeSec;
       next.robots = next.robots.map((robot) =>
         robot.robotId === robotId ? { ...robot, state: "SERVICING_AT_STATION", color: robotColors.SERVICING_AT_STATION, currentPath: [] } : robot
       );
-      next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "info", robotId, taskId: next.robots.find((robot) => robot.robotId === robotId)?.assignedTaskId, message: `${robotId} started station service.` });
+      if (task) {
+        next.rackStates[task.rackId] = {
+          ...next.rackStates[task.rackId],
+          operationalStatus: "AT_STATION"
+        };
+        next.operationalTasks = next.operationalTasks.map((item) =>
+          item.operationalTaskId === task.operationalTaskId ? { ...item, status: "SERVICING", timestamps: { ...item.timestamps, servicingAtSec: next.simTimeSec } } : item
+        );
+      }
+      if (next.stationStates[queue.stationId]) {
+        next.stationStates[queue.stationId] = { ...next.stationStates[queue.stationId], activeRobotId: robotId, activeRackId: task?.rackId, serviceEndTimeSec: queue.serviceEndTimeSec };
+      }
+      next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "info", entityType: "station", entityId: queue.stationId, robotId, taskId: robotTaskId, message: `${robotId} started station service.` });
     }
   }
   void layout;
@@ -360,42 +682,146 @@ function handleRobotTransitions(layout: WarehouseLayout, state: SimulationState,
         item.robotId === robot.robotId ? { ...item, state: "LIFTING_RACK", color: robotColors.LIFTING_RACK, waitUntilSec: next.simTimeSec + item.liftTimeSec } : item
       );
       next.tasks = next.tasks.map((item) => (item.taskId === task.taskId ? { ...item, status: "IN_PROGRESS" } : item));
-      next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "info", robotId: robot.robotId, taskId: task.taskId, message: `${robot.robotId} reached rack pickup approach.` });
+      next.operationalTasks = next.operationalTasks.map((item) =>
+        item.operationalTaskId === task.operationalTaskId ? { ...item, status: "LIFTING", timestamps: { ...item.timestamps, liftingAtSec: next.simTimeSec } } : item
+      );
+      next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "info", entityType: "robot", entityId: robot.robotId, robotId: robot.robotId, taskId: task.taskId, message: `${robot.robotId} reached rack pickup approach.` });
     }
     if (robot.state === "LIFTING_RACK" && robot.waitUntilSec !== undefined && next.simTimeSec >= robot.waitUntilSec) {
-      const loadedPath = task.routePlan ? planLoadedPath(task.routePlan) : [];
+      const loadedPath = task.routePlan?.pathToPreStationRotationZone?.length ? task.routePlan.pathToPreStationRotationZone : task.routePlan?.loadedPathToStation ?? [];
       next.robots = next.robots.map((item) =>
         item.robotId === robot.robotId
-          ? { ...item, state: "MOVING_LOADED", color: robotColors.MOVING_LOADED, carryingRackId: task.rackId, currentPath: loadedPath, routeIndex: 0, segmentProgressM: 0, pathProgress: 0, waitUntilSec: undefined }
+          ? {
+              ...item,
+              state: "MOVING_LOADED",
+              color: robotColors.MOVING_LOADED,
+              carryingRackId: task.rackId,
+              currentPath: loadedPath,
+              routeIndex: 0,
+              segmentProgressM: 0,
+              pathProgress: 0,
+              waitUntilSec: undefined,
+              routePhase: task.routePlan?.pathToPreStationRotationZone?.length ? "PRE_ROTATION" : "TO_STATION"
+            }
           : item
       );
-      next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "info", robotId: robot.robotId, taskId: task.taskId, message: `${robot.robotId} picked rack.` });
+      const sourceStorageId = next.rackStates[task.rackId]?.currentStorageLocationId ?? task.sourceStorageLocationId;
+      next.rackStates[task.rackId] = {
+        ...next.rackStates[task.rackId],
+        operationalStatus: "BEING_CARRIED",
+        currentStorageLocationId: undefined,
+        carriedByRobotId: robot.robotId
+      };
+      if (sourceStorageId && next.storageLocationStates[sourceStorageId]) {
+        next.storageLocationStates[sourceStorageId] = {
+          ...next.storageLocationStates[sourceStorageId],
+          status: "EMPTY",
+          currentlyStoredRackId: undefined,
+          reservedForRackId: undefined
+        };
+      }
+      next.operationalTasks = next.operationalTasks.map((item) =>
+        item.operationalTaskId === task.operationalTaskId ? { ...item, status: "TRAVEL_LOADED", timestamps: { ...item.timestamps, travelLoadedAtSec: next.simTimeSec } } : item
+      );
+      next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "info", entityType: "rack", entityId: task.rackId, robotId: robot.robotId, taskId: task.taskId, message: `${robot.robotId} lifted rack ${task.rackId}; storage ${sourceStorageId ?? "unknown"} freed.` });
     }
     if (robot.state === "MOVING_LOADED" && movementComplete(robot)) {
+      if (robot.routePhase === "PRE_ROTATION") {
+        const zoneRotationTime = layout.rotationZones.find((zone) => zone.cells.some((cell) => cellKey(cell) === cellKey(robot.currentCell)))?.rotationTimeSec;
+        const rotationTime = zoneRotationTime ?? (config.rotationSpeedDegPerSec > 0 ? 360 / Math.max(1, config.rotationSpeedDegPerSec) : 6);
+        next.robots = next.robots.map((item) =>
+          item.robotId === robot.robotId ? { ...item, state: "ROTATING_WITH_RACK", color: robotColors.ROTATING_WITH_RACK, waitUntilSec: next.simTimeSec + rotationTime } : item
+        );
+        next.operationalTasks = next.operationalTasks.map((item) =>
+          item.operationalTaskId === task.operationalTaskId ? { ...item, status: "ROTATING_PRE_STATION" } : item
+        );
+        next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "info", entityType: "rack", entityId: task.rackId, robotId: robot.robotId, taskId: task.taskId, message: `Rack ${task.rackId} entered pre-station rotation zone.` });
+        continue;
+      }
       const stationId = task.stationId;
       const queue = next.stationQueues.find((item) => item.stationId === stationId);
       if (queue && !queue.waitingRobotIds.includes(robot.robotId) && queue.activeRobotId !== robot.robotId) queue.waitingRobotIds.push(robot.robotId);
       next.robots = next.robots.map((item) =>
         item.robotId === robot.robotId ? { ...item, state: "QUEUING_AT_STATION", color: robotColors.QUEUING_AT_STATION, currentPath: [] } : item
       );
-      next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "info", robotId: robot.robotId, taskId: task.taskId, message: `${robot.robotId} arrived at station queue.` });
+      next.operationalTasks = next.operationalTasks.map((item) =>
+        item.operationalTaskId === task.operationalTaskId ? { ...item, status: "QUEUING", timestamps: { ...item.timestamps, queuingAtSec: next.simTimeSec } } : item
+      );
+      next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "info", entityType: "station", entityId: stationId, robotId: robot.robotId, taskId: task.taskId, message: `${robot.robotId} arrived at station queue.` });
+    }
+    if (robot.state === "ROTATING_WITH_RACK" && robot.waitUntilSec !== undefined && next.simTimeSec >= robot.waitUntilSec) {
+      const targetOrientation = robot.routePhase === "PRE_ROTATION" ? task.requiredStationOrientationDeg : layout.racks.find((rack) => rack.id === task.rackId)?.currentOrientationDeg;
+      next.rackStates[task.rackId] = {
+        ...next.rackStates[task.rackId],
+        currentOrientationDeg: targetOrientation ?? next.rackStates[task.rackId]?.currentOrientationDeg ?? 0
+      };
+      if (robot.routePhase === "PRE_ROTATION") {
+        next.tasks = next.tasks.map((item) => (item.taskId === task.taskId ? { ...item, rotationPreCompleted: true } : item));
+        next.robots = next.robots.map((item) =>
+          item.robotId === robot.robotId
+            ? { ...item, state: "MOVING_LOADED", color: robotColors.MOVING_LOADED, currentPath: task.routePlan?.loadedPathToStation ?? [], routeIndex: 0, segmentProgressM: 0, pathProgress: 0, waitUntilSec: undefined, routePhase: "TO_STATION" }
+            : item
+        );
+      } else {
+        next.tasks = next.tasks.map((item) => (item.taskId === task.taskId ? { ...item, rotationPostCompleted: true } : item));
+        next.robots = next.robots.map((item) =>
+          item.robotId === robot.robotId
+            ? { ...item, state: "RETURNING_RACK", color: robotColors.RETURNING_RACK, currentPath: task.routePlan?.returnPath ?? [], routeIndex: 0, segmentProgressM: 0, pathProgress: 0, waitUntilSec: undefined, routePhase: "RETURN_TO_STORAGE" }
+            : item
+        );
+      }
+      next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "info", entityType: "rack", entityId: task.rackId, robotId: robot.robotId, taskId: task.taskId, message: `Rack ${task.rackId} rotated to ${targetOrientation ?? "default"} degrees.` });
     }
     if (robot.state === "RETURNING_RACK" && movementComplete(robot)) {
+      if (robot.routePhase === "POST_ROTATION") {
+        const rotationTime = layout.rotationZones.find((zone) => zone.cells.some((cell) => cellKey(cell) === cellKey(robot.currentCell)))?.rotationTimeSec ?? 6;
+        next.robots = next.robots.map((item) =>
+          item.robotId === robot.robotId ? { ...item, state: "ROTATING_WITH_RACK", color: robotColors.ROTATING_WITH_RACK, waitUntilSec: next.simTimeSec + rotationTime } : item
+        );
+        next.operationalTasks = next.operationalTasks.map((item) =>
+          item.operationalTaskId === task.operationalTaskId ? { ...item, status: "ROTATING_POST_STATION" } : item
+        );
+        next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "info", entityType: "rack", entityId: task.rackId, robotId: robot.robotId, taskId: task.taskId, message: `Rack ${task.rackId} entered post-station rotation zone.` });
+        continue;
+      }
       next.robots = next.robots.map((item) =>
         item.robotId === robot.robotId ? { ...item, state: "DROPPING_RACK", color: robotColors.DROPPING_RACK, waitUntilSec: next.simTimeSec + item.dropTimeSec, currentPath: [] } : item
       );
-      next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "info", robotId: robot.robotId, taskId: task.taskId, message: `${robot.robotId} returned rack to home approach.` });
+      next.operationalTasks = next.operationalTasks.map((item) =>
+        item.operationalTaskId === task.operationalTaskId ? { ...item, status: "DROPPING", timestamps: { ...item.timestamps, droppingAtSec: next.simTimeSec } } : item
+      );
+      next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "info", entityType: "rack", entityId: task.rackId, robotId: robot.robotId, taskId: task.taskId, message: `${robot.robotId} returned rack to storage approach.` });
     }
     if (robot.state === "DROPPING_RACK" && robot.waitUntilSec !== undefined && next.simTimeSec >= robot.waitUntilSec) {
       const completed = { ...task, status: "COMPLETED" as const, completedAtSec: next.simTimeSec };
       next.completedTasks.push(completed);
       next.tasks = next.tasks.filter((item) => item.taskId !== task.taskId);
+      const destinationStorageId = task.destinationStorageLocationId ?? next.rackStates[task.rackId]?.homeStorageLocationId;
+      next.rackStates[task.rackId] = {
+        ...next.rackStates[task.rackId],
+        operationalStatus: "STORED",
+        currentStorageLocationId: destinationStorageId,
+        destinationStorageLocationId: undefined,
+        carriedByRobotId: undefined,
+        activeTaskId: undefined
+      };
+      if (destinationStorageId && next.storageLocationStates[destinationStorageId]) {
+        next.storageLocationStates[destinationStorageId] = {
+          ...next.storageLocationStates[destinationStorageId],
+          status: "OCCUPIED",
+          currentlyStoredRackId: task.rackId,
+          reservedForRackId: undefined
+        };
+      }
+      next.operationalTasks = next.operationalTasks.map((item) =>
+        item.operationalTaskId === task.operationalTaskId ? { ...item, status: "COMPLETED", timestamps: { ...item.timestamps, completedAtSec: next.simTimeSec } } : item
+      );
       next.robots = next.robots.map((item) =>
         item.robotId === robot.robotId
-          ? { ...item, state: "IDLE", color: robotColors.IDLE, assignedTaskId: undefined, carryingRackId: undefined, currentPath: [], routeIndex: 0, segmentProgressM: 0, pathProgress: 0, waitUntilSec: undefined }
+          ? { ...item, state: "IDLE", color: robotColors.IDLE, assignedTaskId: undefined, carryingRackId: undefined, currentPath: [], routeIndex: 0, segmentProgressM: 0, pathProgress: 0, waitUntilSec: undefined, routePhase: undefined }
           : item
       );
-      next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "info", robotId: robot.robotId, taskId: task.taskId, message: `Task ${task.taskId} completed.` });
+      next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "info", entityType: "task", entityId: task.taskId, robotId: robot.robotId, taskId: task.taskId, message: `Task ${task.taskId} completed; rack stored at ${destinationStorageId ?? "unknown storage"}.` });
     }
   }
   void layout;
@@ -430,18 +856,19 @@ export function calculateSimulationMetrics(
 
 export function stepSimulation(layout: WarehouseLayout, state: SimulationState, config: SimulationConfig, deltaTimeSec: number): SimulationState {
   if (!state.initialized) return state;
+  const normalized = layout.storageLocations?.length ? layout : ensureStorageLocations(layout);
   let next: SimulationState = {
     ...structuredClone(state),
     simTimeSec: state.simTimeSec + deltaTimeSec
   };
-  next = assignTasks(layout, next, config);
+  next = assignTasks(normalized, next, config);
   next.robots = next.robots.map((robot) => {
-    if (["MOVING_EMPTY", "MOVING_LOADED", "RETURNING_RACK"].includes(robot.state)) return advanceRobotOnPath(layout, robot, deltaTimeSec);
+    if (["MOVING_EMPTY", "MOVING_LOADED", "RETURNING_RACK"].includes(robot.state)) return advanceRobotOnPath(normalized, robot, deltaTimeSec);
     return robot;
   });
-  next = handleRobotTransitions(layout, next, config);
-  next = updateStationQueues(layout, next, config);
-  next.metrics = calculateSimulationMetrics(next, next.simTimeSec, layout);
+  next = handleRobotTransitions(normalized, next, config);
+  next = updateStationQueues(normalized, next, config);
+  next.metrics = calculateSimulationMetrics(next, next.simTimeSec, normalized);
   return next;
 }
 

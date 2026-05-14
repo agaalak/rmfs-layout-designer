@@ -9,6 +9,7 @@ import {
 import type { SimulationTask } from "../models/task";
 import {
   createTaskForRackStation,
+  generateOperationalSimulationWork,
   generateSimulationTasks,
   initializeSimulation,
   resetSimulation,
@@ -41,6 +42,15 @@ const initialState: SimulationState = {
   speedMultiplier: 1,
   robots: [],
   tasks: [],
+  operationalTasks: [],
+  orders: [],
+  completedOrders: [],
+  failedOrders: [],
+  inventory: [],
+  rackStates: {},
+  storageLocationStates: {},
+  stationStates: {},
+  storageLocations: [],
   completedTasks: [],
   failedTasks: [],
   reservationTable: createReservationTable(defaultSimulationConfig.reservationTimeStepSec),
@@ -81,16 +91,24 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
   },
   generateTasks: (layout) =>
     set((current) => {
-      const tasks = generateSimulationTasks(layout, current.config, current.state.simTimeSec);
+      const work = current.state.initialized ? generateOperationalSimulationWork(layout, current.state, current.config) : undefined;
+      const tasks = work?.tasks ?? generateSimulationTasks(layout, current.config, current.state.simTimeSec);
       return {
         state: {
           ...current.state,
+          orders: [...current.state.orders, ...(work?.orders.filter((order) => order.status !== "FAILED") ?? [])],
+          failedOrders: [...current.state.failedOrders, ...(work?.failedOrders ?? [])],
+          operationalTasks: [...current.state.operationalTasks, ...(work?.operationalTasks ?? tasks.map((task) => ({ operationalTaskId: task.operationalTaskId ?? `op_${task.taskId}`, orderLineIds: task.orderLineIds ?? [], taskKind: "MOVE_RACK_TO_STATION" as const, rackId: task.rackId, stationId: task.stationId ?? "", status: "PLANNED" as const, timestamps: { plannedAtSec: current.state.simTimeSec } })))],
+          inventory: work?.inventory ?? current.state.inventory,
+          rackStates: work?.rackStates ?? current.state.rackStates,
+          storageLocationStates: work?.storageLocationStates ?? current.state.storageLocationStates,
           tasks: [...current.state.tasks, ...tasks],
-          eventLog: [
+          eventLog: work?.eventLog ?? [
             ...current.state.eventLog,
             ...tasks.map((task) => ({
               timeSec: current.state.simTimeSec,
               severity: "info" as const,
+              entityType: "task" as const,
               taskId: task.taskId,
               message: `Task ${task.taskId} created.`
             }))
@@ -118,9 +136,23 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
         state: {
           ...current.state,
           tasks: [...current.state.tasks, task as SimulationTask],
+          operationalTasks: [
+            ...current.state.operationalTasks,
+            {
+              operationalTaskId: task.operationalTaskId ?? `op_${task.taskId}`,
+              orderLineIds: task.orderLineIds ?? [],
+              taskKind: "MOVE_RACK_TO_STATION" as const,
+              rackId: task.rackId,
+              stationId: task.stationId ?? "",
+              sourceStorageLocationId: task.sourceStorageLocationId,
+              destinationStorageLocationId: task.destinationStorageLocationId,
+              status: "PLANNED" as const,
+              timestamps: { plannedAtSec: current.state.simTimeSec }
+            }
+          ],
           eventLog: [
             ...current.state.eventLog,
-            { timeSec: current.state.simTimeSec, severity: "info" as const, taskId: task.taskId, message: `Manual task ${task.taskId} created.` }
+            { timeSec: current.state.simTimeSec, severity: "info" as const, entityType: "task" as const, taskId: task.taskId, message: `Manual task ${task.taskId} created.` }
           ].slice(-500)
         }
       };

@@ -21,7 +21,7 @@ This is not the final 3D robot simulator, and it is not a full RAWSim-O replacem
 - Show graph-distance, congestion, or validation heatmaps on the canvas.
 - Compare generated layout candidates before applying one to the editable canvas.
 - Edit rack bins in a table and import/export rack-bin CSV files.
-- Switch to Experimental Simulation Mode, initialize robots, generate simple rack-to-station tasks, play/pause/step a 2D top-down simulation, and export simulation metrics/logs.
+- Switch to Experimental Simulation Mode, initialize robots, generate inventory-backed sample orders, select racks/stations/robots through simple controllers, play/pause/step a 2D top-down simulation, and export simulation metrics/logs/orders/inventory.
 
 ## Workflow-Oriented UI
 
@@ -71,8 +71,13 @@ The app uses the term rack in code and UI, while also treating racks as RMFS pod
 - Face A and Face B
 - Bin rows, columns, barcode/location patterns, SKU and quantity fields in the data model and right-side rack bin editor
 - Optional HOT/WARM/COLD demand class
+- Home/current storage location IDs and operational status for simulation
 
 Face A and Face B are visually distinguished on each rack by the split rack coloring. A rack orientation arrow shows the current orientation. When a rack is selected, the right panel shows a full editable bin table with regeneration, SKU clearing, location auto-numbering, and rack-bin CSV import/export.
+
+## Storage Locations
+
+Storage locations are first-class layout records. Generated and imported layouts contain storage locations with occupied cells, allowed rack types, default orientation, approach waypoint IDs, current rack occupancy, reservation state, and status. Older layouts without storage locations are migrated from rack home cells and rack-storage cells on import.
 
 ## Candidate Comparison
 
@@ -129,15 +134,20 @@ The simulation panel can:
 
 - Initialize robots from parking spots first, charging spots second, then perimeter road cells if needed.
 - Configure robot count, loaded/unloaded speed, lift/drop time, station service time, reservation time step, task count, and task generation mode.
-- Generate random nearest-station tasks or HOT/WARM/COLD weighted tasks.
+- Generate sample customer orders from current SKU inventory.
+- Select racks by nearest rack with SKU, most inventory for SKU, or HOT/WARM/COLD preference.
+- Select stations, robots, and return storage through explicit controller strategy dropdowns.
 - Create a manual rack-to-station task from selected rack/station dropdowns.
 - Play, pause, step, reset, and choose speed multipliers from `0.25x` through `10x`.
 - Toggle robot labels, planned paths, reservation overlays, and collision checking.
 - Show live simulation time, active/completed/failed task counts, blocked robots, throughput estimate, cycle time, robot utilization, and station utilization.
-- Filter an event log by robot, task, message, or severity.
-- Export simulation config JSON, event log CSV, and metrics CSV.
+- Inspect Orders & Inventory, operational tasks, robots, stations, and structured event logs.
+- Filter an event log by robot, task, entity, message, or severity.
+- Export simulation config JSON, event log CSV, metrics CSV, orders CSV, and inventory CSV.
 
 Robots follow shortest paths over the layout graph instead of driving straight through racks or walls. The planner respects one-way/two-way traffic rules, avoids blocked cells, uses adjacent rack approach cells for pickup/dropoff, and routes toward station queue/service cells. A basic time-expanded reservation table prevents obvious same-cell and edge-swap conflicts by inserting wait steps when possible.
+
+The operational chain now follows a simplified RMFS flow: order lines/SKUs -> rack selection -> station assignment -> robot assignment -> rack reservation -> empty travel -> lift -> optional rotation -> station queue/service -> inventory update -> storage/reallocation decision -> return/drop -> task/order completion.
 
 This is intentionally not full MAPF. There is no CBS, WHCA*, global deadlock proof, or continuous collision envelope solver yet. The current traffic layer is practical for early layout playback and debugging, while the roadmap remains full MAPF and 3D/RTS-style simulation.
 
@@ -145,7 +155,7 @@ This is intentionally not full MAPF. There is no CBS, WHCA*, global deadlock pro
 
 RAWSim-O is a discrete-event simulation framework for RMFS decision strategies, not a drawing tool. This app now documents the canonical RMFS concepts in [docs/RAWSIMO_ALIGNMENT.md](docs/RAWSIMO_ALIGNMENT.md): layout instances, physical cells, routing waypoints, storage locations, racks/pods, rack faces and bins, stations, chargers, parking, robots, orders, movement tasks, and controller boundaries.
 
-Current implementation is still layout-editor first. Business orders, SKU-based rack selection, pod reallocation, and full controller strategy comparisons are roadmap work.
+Current implementation is still layout-editor first, but Experimental Simulation Mode now includes simplified orders, inventory-backed rack selection, operational tasks, rack/storage state, station service inventory updates, and rack storage/reallocation strategies. See [docs/RMFS_OPERATION_MODEL.md](docs/RMFS_OPERATION_MODEL.md) for the operational model.
 
 ## Import And Export
 
@@ -204,8 +214,9 @@ The current verified pass used:
 - No full CBS/WHCA*/MAPF planner yet.
 - Reservation-based collision avoidance handles obvious vertex and edge-swap conflicts, but it is not a complete deadlock-free traffic controller.
 - Analytics remain estimates; simulation metrics are early operational approximations.
-- Storage locations are still mostly represented through rack home cells/rack-storage cells; first-class storage-location records are documented but not fully integrated.
-- Customer orders and SKU-based rack/pod selection are not yet wired into the UI.
+- Order generation uses synthetic sample demand from current inventory, not imported real order waves yet.
+- Replenishment support exists in the operation helpers/service path but the UI is still pick-order focused.
+- Controller strategies are intentionally simple and not yet an experiment-runner framework.
 - Multi-cell rack support is limited to up to `2x2` occupied cells.
 - True Flying-V is an Experimental first-pass stair-step diagonal aisle generator, not a CAD-grade continuous diagonal geometry model.
 
@@ -216,6 +227,7 @@ The current verified pass used:
 - MAPF planner
 - Collision avoidance
 - Battery/charging policies and richer station service models
+- Experiment runner for comparing layouts and controller strategies over multiple seeds
 - DXF/CAD import
 - Cloud save/load
 

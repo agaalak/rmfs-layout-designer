@@ -1,6 +1,7 @@
 import type { WarehouseLayout } from "../models/layout";
 import { APP_VERSION, createEmptyLayout, LAYOUT_SCHEMA_VERSION } from "../generators/proceduralGenerator";
 import { deriveDimensions } from "../utils/gridMath";
+import { ensureStorageLocations } from "../utils/storageLocations";
 
 export interface LayoutImportResult {
   ok: boolean;
@@ -35,11 +36,7 @@ export function parseLayoutJson(json: string): LayoutImportResult {
     cellDepthM: parsed.grid.cellDepthM
   });
   const now = new Date().toISOString();
-  return {
-    ok: true,
-    errors: [],
-    warnings,
-    layout: {
+  const layout = ensureStorageLocations({
     ...defaults,
     ...parsed,
     layoutSchemaVersion: parsed.layoutSchemaVersion ?? LAYOUT_SCHEMA_VERSION,
@@ -48,6 +45,7 @@ export function parseLayoutJson(json: string): LayoutImportResult {
     modifiedAt: now,
     physicalDimensions: parsed.physicalDimensions ?? deriveDimensions(parsed.grid),
     racks: parsed.racks ?? [],
+    storageLocations: parsed.storageLocations ?? [],
     stations: parsed.stations ?? [],
     chargingSpots: parsed.chargingSpots ?? [],
     parkingSpots: parsed.parkingSpots ?? [],
@@ -57,7 +55,12 @@ export function parseLayoutJson(json: string): LayoutImportResult {
       ...(parsed.metadata ?? {}),
       importWarnings: warnings
     }
-    }
+  });
+  return {
+    ok: true,
+    errors: [],
+    warnings,
+    layout
   };
 }
 

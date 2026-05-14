@@ -13,6 +13,7 @@ import { cellKey, deriveDimensions, inBounds, neighbors, spreadIndices } from ".
 import { makeId, nextSequentialId } from "../utils/ids";
 import { makeBinRecords } from "../utils/rackBins";
 import { rackOccupiedCells } from "../utils/rackFootprint";
+import { ensureStorageLocations } from "../utils/storageLocations";
 
 export const LAYOUT_SCHEMA_VERSION = "0.2.0";
 export const APP_VERSION = "0.2.0";
@@ -59,6 +60,7 @@ export function makeLayoutShell(params: GenerationParams, mode: WarehouseLayout[
     physicalDimensions: deriveDimensions(grid),
     cells: [],
     racks: [],
+    storageLocations: [],
     stations: [],
     chargingSpots: [],
     parkingSpots: [],
@@ -265,13 +267,24 @@ export function makeRackBins(
   return makeBinRecords(rackId, faceId, rows, columns, { widthM, depthM, heightM, barcodePrefix, locationPrefix });
 }
 
-function makeFaces(rackId: string): RackFace[] {
+const demoSkus = ["SKU-HOT-001", "SKU-HOT-002", "SKU-WARM-001", "SKU-WARM-002", "SKU-COLD-001", "SKU-COLD-002"];
+
+function makeFaces(rackId: string, rackIndex = 0): RackFace[] {
   return ["A", "B"].map((faceId) => ({
     faceId: faceId as "A" | "B",
     localSide: faceId === "A" ? "FRONT" : "BACK",
     rows: 4,
     columns: 3,
-    bins: makeRackBins(rackId, faceId as "A" | "B", 4, 3)
+    bins: makeRackBins(rackId, faceId as "A" | "B", 4, 3).map((bin, binIndex) => {
+      const sku = demoSkus[(rackIndex + binIndex) % demoSkus.length];
+      return {
+        ...bin,
+        sku,
+        quantity: 8 + ((rackIndex + binIndex) % 7),
+        reservedQuantity: 0,
+        maxQuantity: 40
+      };
+    })
   }));
 }
 
@@ -316,9 +329,10 @@ function addRacks(cells: CellMap, racks: Rack[], params: GenerationParams) {
       heightM: 1.8,
       currentOrientationDeg: 0,
       allowedOrientationsDeg: [0, 90, 180, 270],
-      faces: makeFaces(rackId),
+      faces: makeFaces(rackId, index),
       storageZoneId: demandClass.toLowerCase(),
-      demandClass
+      demandClass,
+      operationalStatus: "STORED"
     });
   });
 }
@@ -456,7 +470,7 @@ export function generateProceduralLayout(params: GenerationParams): WarehouseLay
   addRotationZones(cells, rotations, params, stations);
   addRacks(cells, racks, params);
 
-  return {
+  return ensureStorageLocations({
     ...layout,
     name: "Mode B Generated Layout",
     modifiedAt: new Date().toISOString(),
@@ -467,7 +481,7 @@ export function generateProceduralLayout(params: GenerationParams): WarehouseLay
     parkingSpots: parking,
     rotationZones: rotations,
     metadata: { ...layout.metadata, layoutFamily: params.layoutFamily }
-  };
+  });
 }
 
 const candidateFamilies: GenerationParams["layoutFamily"][] = [
@@ -602,7 +616,7 @@ export function applyHybridFill(base: WarehouseLayout, params: GenerationParams)
   ]);
   const protectedCells = new Set([...lockedCells.keys(), ...occupiedByBaseObjects]);
   const objectTouchesProtected = (cells: GridCell[]) => cells.some((cell) => protectedCells.has(cellKey(cell)));
-  return {
+  return ensureStorageLocations({
     ...generated,
     layoutId: makeId("hybrid"),
     name: "Hybrid Generated Layout",
@@ -617,5 +631,5 @@ export function applyHybridFill(base: WarehouseLayout, params: GenerationParams)
     parkingSpots: [...base.parkingSpots, ...generated.parkingSpots.filter((parking) => !objectTouchesProtected([parking.cell]))],
     rotationZones: [...base.rotationZones, ...generated.rotationZones.filter((zone) => !objectTouchesProtected(zone.cells))],
     metadata: { ...generated.metadata, hybridGeneratedFromConstraints: true }
-  };
+  });
 }

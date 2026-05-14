@@ -23,6 +23,7 @@ import { cellKey, deriveDimensions, inBounds } from "../utils/gridMath";
 import { makeId, nextSequentialId } from "../utils/ids";
 import { rackOccupiedCells } from "../utils/rackFootprint";
 import { regenerateRackBins as regenerateRackBinsForRack } from "../utils/rackBins";
+import { ensureStorageLocations } from "../utils/storageLocations";
 import { pushHistory, redoHistory, undoHistory, type HistoryState } from "./historyStore";
 
 function cloneLayout(layout: WarehouseLayout): WarehouseLayout {
@@ -158,6 +159,7 @@ function makeDefaultRack(index: number, homeCell: GridCell): Rack {
     allowedOrientationsDeg: [0, 90, 180, 270],
     storageZoneId: "hot",
     demandClass: "HOT",
+    operationalStatus: "STORED",
     faces: ["A", "B"].map((faceId) => ({
       faceId: faceId as "A" | "B",
       localSide: faceId === "A" ? "FRONT" : "BACK",
@@ -233,7 +235,7 @@ interface LayoutState {
 const initialLayout = generateProceduralLayout(defaultGenerationParams);
 
 function commit(history: HistoryState<WarehouseLayout>, layout: WarehouseLayout) {
-  return pushHistory(history, cloneLayout(layout));
+  return pushHistory(history, ensureStorageLocations(cloneLayout(layout)));
 }
 
 export const useLayoutStore = create<LayoutState>((set, get) => ({

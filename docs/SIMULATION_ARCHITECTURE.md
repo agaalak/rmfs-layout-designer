@@ -19,12 +19,43 @@ The main state object tracks:
 - speed multiplier
 - robots
 - pending, active, completed, and failed tasks
+- orders, completed orders, and failed orders
+- inventory snapshots derived from rack bins
+- rack runtime states
+- storage-location runtime states
+- station runtime states
+- operational tasks layered over movement tasks
 - station queues
 - reservation table snapshot
 - event log
 - live metrics
 
-The simulation config stores robot count, speeds, acceleration/deceleration values, lift/drop time, station service time, task generation mode/count, reservation time step, and visual toggles.
+The simulation config stores robot count, speeds, acceleration/deceleration values, lift/drop time, station service time, task generation mode/count, reservation time step, visual toggles, and controller strategy choices.
+
+## Operational RMFS Model
+
+The simulator now distinguishes business demand from movement:
+
+- `RmfsOrder` and `RmfsOrderLine` model SKU demand and fulfillment.
+- `SimulationInventoryBin` snapshots rack-bin inventory and reserved quantity.
+- `OperationalTask` tracks the RMFS lifecycle for order pick, replenishment, rack movement, return to storage, charging, and parking tasks.
+- `SimulationTask` remains the lower-level movement task used by the path planner and robot state machine.
+
+The current pick flow is:
+
+1. Generate sample orders from available SKU inventory.
+2. Select a rack with available SKU quantity.
+3. Select a compatible station.
+4. Reserve inventory, rack, and storage state.
+5. Assign an idle robot.
+6. Move empty to rack approach.
+7. Lift rack and free the source storage location.
+8. Optionally rotate before station service.
+9. Queue and service at the station.
+10. Decrement picked inventory and fulfill order lines.
+11. Select a return storage location.
+12. Optionally rotate back toward storage orientation.
+13. Drop rack, occupy storage, complete task/order, and return robot to idle.
 
 ## Robot State Machine
 
@@ -51,14 +82,14 @@ Current implemented flow:
 2. A task is assigned and route segments are planned.
 3. The robot moves empty to a rack approach cell.
 4. The robot waits for lift time and attaches the rack.
-5. The loaded robot drives to the station queue/service area, optionally via rotation-zone detours.
+5. The loaded robot drives to the station queue/service area, optionally via explicit rotation-zone dwell states.
 6. The robot enters station FIFO service.
-7. After service, it returns the rack to a home approach/drop cell.
+7. After service, a rack-storage controller chooses return home or another available storage location.
 8. The robot waits for drop time, detaches the rack, completes the task, and returns to `IDLE`.
 
 ## Task Lifecycle
 
-Tasks use `SimulationTask` records with:
+Operational work uses `OperationalTask` records and movement uses `SimulationTask` records with:
 
 - task id/type
 - rack id
@@ -72,11 +103,12 @@ Tasks use `SimulationTask` records with:
 
 Supported generation modes:
 
-- Random rack to nearest compatible station.
-- HOT/WARM/COLD weighted rack selection.
+- Sample order generation from current SKU inventory.
+- Rack selection by nearest rack with SKU, most inventory, or HOT/WARM/COLD preference.
+- Station assignment by nearest compatible station, shortest queue, or station type.
 - Manual rack/station selection from the simulation panel.
 
-Task statuses are:
+Movement task statuses are:
 
 - `PENDING`
 - `ASSIGNED`
@@ -166,13 +198,13 @@ Visual behavior:
 
 Each station gets a `StationQueue` record. Robots entering a station are appended to the waiting list. If the station has no active robot, the first waiting robot begins service and receives a service end time. When service time expires, that robot leaves service and continues on its return route.
 
-This is FIFO service, not a detailed workstation labor model.
+This is FIFO service, not a detailed workstation labor model. PICK and COMBI service paths decrement inventory and fulfill order lines. REPLENISH service paths can increment bin inventory through helper/controller code, but the UI is still pick-order focused.
 
 ## Orientation And Rotation Zones
 
 Station required orientation and accepted rack faces are copied into tasks. If a station orientation differs from the rack's current orientation, route planning can include paths to compatible rotation zones before the station and before the return leg.
 
-Current limitation: routing through compatible rotation zones is implemented, but explicit animated rack-rotation dwell and detailed face/service-side control remain future refinements.
+Current behavior: compatible rotation-zone paths create explicit `ROTATING_WITH_RACK` dwell states. Rack orientation updates at the end of pre-station and post-station rotation events. The model does not yet reserve rotation-zone capacity across multiple loaded robots.
 
 ## Validation Before Simulation
 
@@ -196,6 +228,8 @@ Supported exports:
 - simulation config JSON
 - simulation event log CSV
 - simulation metrics CSV
+- orders CSV
+- inventory CSV
 
 Simulation config JSON can also be imported with validation.
 

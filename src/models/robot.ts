@@ -44,6 +44,7 @@ export interface Robot {
   dropTimeSec: number;
   batteryPercent: number;
   color: string;
+  routePhase?: "TO_RACK" | "PRE_ROTATION" | "TO_STATION" | "POST_ROTATION" | "RETURN_TO_STORAGE" | "TO_PARKING" | "TO_CHARGER";
   waitUntilSec?: number;
   blockedReason?: string;
 }

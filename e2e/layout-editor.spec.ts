@@ -37,7 +37,12 @@ async function appState(page: Page) {
       simInitialized: simulation.state.initialized,
       simTasks: simulation.state.tasks.length,
       simCompleted: simulation.state.completedTasks.length,
-      simEvents: simulation.state.eventLog.length
+      simEvents: simulation.state.eventLog.length,
+      simOrders: simulation.state.orders.length + simulation.state.completedOrders.length + simulation.state.failedOrders.length,
+      simCompletedOrders: simulation.state.completedOrders.length,
+      simInventoryBins: simulation.state.inventory.length,
+      simInventoryTotal: simulation.state.inventory.reduce((sum: number, bin: any) => sum + bin.quantity, 0),
+      simControllerEvents: simulation.state.eventLog.filter((event: any) => event.entityType === "controller").length
     };
   });
 }
@@ -241,6 +246,9 @@ test("experimental simulation can complete one simple task cycle", async ({ page
   await page.getByRole("button", { name: "Generate tasks" }).click();
   expect((await appState(page)).simInitialized).toBe(true);
   expect((await appState(page)).simTasks).toBeGreaterThan(0);
+  expect((await appState(page)).simOrders).toBeGreaterThan(0);
+  expect((await appState(page)).simControllerEvents).toBeGreaterThan(0);
+  const inventoryBefore = (await appState(page)).simInventoryTotal;
 
   const completed = await page.evaluate(() => {
     const api = (window as unknown as { __RMFS_TEST__: any }).__RMFS_TEST__;
@@ -256,6 +264,8 @@ test("experimental simulation can complete one simple task cycle", async ({ page
   });
   expect(completed.completed).toBeGreaterThan(0);
   expect(completed.events).toBeGreaterThan(0);
+  expect((await appState(page)).simCompletedOrders).toBeGreaterThan(0);
+  expect((await appState(page)).simInventoryTotal).toBeLessThan(inventoryBefore);
   await page.getByRole("button", { name: "Reset" }).click();
   expect((await appState(page)).simInitialized).toBe(false);
 });

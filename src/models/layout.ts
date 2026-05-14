@@ -4,6 +4,7 @@ import type { ParkingSpot } from "./parking";
 import type { Rack } from "./rack";
 import type { RotationZone } from "./rotation";
 import type { Station } from "./station";
+import type { StorageLocation } from "./storage";
 import type { TrafficRule } from "./traffic";
 import type { SimulationConfig } from "./simulation";
 
@@ -63,6 +64,7 @@ export interface WarehouseLayout {
   physicalDimensions: PhysicalDimensions;
   cells: LayoutCell[];
   racks: Rack[];
+  storageLocations: StorageLocation[];
   stations: Station[];
   chargingSpots: ChargingSpot[];
   parkingSpots: ParkingSpot[];

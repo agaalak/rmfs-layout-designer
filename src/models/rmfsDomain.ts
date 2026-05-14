@@ -1,11 +1,11 @@
 import type { GridCell } from "./grid";
 import type { CardinalOrientation, RackFaceId } from "./rack";
 import type { StationType } from "./station";
+export type { RmfsOrder, RmfsOrderLine, OrderPriority } from "./order";
+export type { StorageLocation, StorageLocationStatus } from "./storage";
 
 export type WaypointType = "road" | "rack_approach" | "station_approach" | "queue" | "charger_approach" | "parking" | "rotation";
-export type StorageLocationStatus = "empty" | "occupied" | "reserved" | "blocked";
 export type RackOperationalStatus = "stored" | "reserved" | "being_carried" | "at_station" | "unavailable";
-export type OrderPriority = "low" | "normal" | "high" | "expedite";
 
 export interface RmfsWaypoint {
   waypointId: string;
@@ -14,16 +14,6 @@ export interface RmfsWaypoint {
   allowedDirections: string[];
   neighborWaypointIds: string[];
   travelCost: number;
-}
-
-export interface StorageLocation {
-  storageLocationId: string;
-  cells: GridCell[];
-  allowedRackTypes: string[];
-  defaultRackOrientationDeg: CardinalOrientation;
-  approachWaypointIds: string[];
-  currentlyStoredRackId?: string;
-  status: StorageLocationStatus;
 }
 
 export interface RackPodOperationalState {
@@ -50,18 +40,6 @@ export interface StationResourceState {
   currentRobotId?: string;
   currentRackId?: string;
   queuedRobotIds: string[];
-}
-
-export interface RmfsOrderLine {
-  sku: string;
-  quantity: number;
-}
-
-export interface RmfsOrder {
-  orderId: string;
-  orderLines: RmfsOrderLine[];
-  priority: OrderPriority;
-  dueTimeSec?: number;
 }
 
 export interface RmfsDecisionControllers {
