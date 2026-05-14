@@ -51,7 +51,7 @@ async function clickCanvas(page: Page, xRatio: number, yRatio: number) {
 async function newManualLayout(page: Page) {
   await page.getByRole("button", { name: "New layout" }).click();
   await page.getByRole("button", { name: "Create empty Mode A layout" }).click();
-  await expect(page.getByTestId("status-bar")).toContainText("Mode: design");
+  await expect(page.getByTestId("status-bar")).toContainText("Workflow: design");
 }
 
 test.beforeEach(async ({ page }) => {
@@ -68,6 +68,8 @@ test("app loads with demo canvas and no console errors", async ({ page }) => {
   });
   await expect(page.getByText("RMFS Layout Designer")).toBeVisible();
   await expect(page.getByTestId("status-bar")).toContainText("Tool: select");
+  await expect(page.getByRole("button", { name: "Start empty Mode A layout" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Generate workflow/ })).toBeVisible();
   const state = await appState(page);
   expect(state.racks).toBeGreaterThan(0);
   expect(state.stations).toBeGreaterThan(0);
@@ -150,10 +152,11 @@ test("runs validation and analytics after an intentional bad layout change", asy
     const layout = (window as unknown as { __RMFS_TEST__: any }).__RMFS_TEST__.layout.getState().history.present;
     store.updateRack(layout.racks[1].id, { homeCell: layout.racks[0].homeCell });
   });
-  await page.getByRole("button", { name: "Run validation" }).click();
+  await page.getByRole("button", { name: /Analyze workflow/ }).click();
+  await page.getByRole("banner").getByRole("button", { name: "Run validation" }).click();
   await expect(page.getByTestId("status-bar")).toContainText("Validation errors");
   await expect(page.getByText("Object overlap")).toBeVisible();
-  await page.getByRole("button", { name: "Run analytics" }).click();
+  await page.getByRole("banner").getByRole("button", { name: "Run analytics" }).click();
   await expect(page.getByText("Analytics refreshed")).toBeVisible();
 });
 
@@ -168,13 +171,16 @@ test("exports and imports layout JSON without losing core objects", async ({ pag
     store.addParking({ row: 5, col: 11 });
     store.addRotation({ row: 5, col: 12 });
   });
+  await page.getByRole("button", { name: /Files workflow/ }).click();
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Save JSON" }).click();
   const download = await downloadPromise;
   const exported = await download.path();
   if (!exported) throw new Error("Exported layout path unavailable");
 
-  await page.getByRole("button", { name: "Clear layout" }).click();
+  await page.evaluate(() => {
+    (window as unknown as { __RMFS_TEST__: any }).__RMFS_TEST__.layout.getState().newLayout({ rows: 8, columns: 8 });
+  });
   await expect.poll(async () => (await appState(page)).racks).toBe(0);
   await page.locator('input[type="file"]').first().setInputFiles(exported);
   await expect.poll(async () => (await appState(page)).racks).toBe(1);
@@ -191,12 +197,13 @@ test("exports and imports layout JSON without losing core objects", async ({ pag
 });
 
 test("generates Mode B candidates, previews, applies, and keeps layout editable", async ({ page }) => {
-  await page.getByRole("button", { name: "Generate Mode B" }).click();
+  await page.getByRole("button", { name: /Generate workflow/ }).click();
+  await page.getByRole("button", { name: "Generate Mode B", exact: true }).click();
   await page.getByRole("button", { name: "Generate layout" }).click();
   await expect(page.getByTestId("candidate-drawer")).toBeVisible();
   expect((await appState(page)).candidateCount).toBeGreaterThan(1);
 
-  await page.getByRole("button", { name: "Apply Selected Candidate" }).click();
+  await page.getByTestId("candidate-drawer").getByRole("button", { name: "Apply Selected Candidate" }).click();
   await expect(page.getByTestId("candidate-drawer")).toBeHidden();
   expect((await appState(page)).appliedCandidateId).toBeTruthy();
 
@@ -219,16 +226,17 @@ test("hybrid generation preserves a locked blocked constraint", async ({ page })
     store.selectCell({ row: 4, col: 4 });
     store.toggleSelectedLock();
   });
-  await page.getByRole("button", { name: "Generate Hybrid" }).click();
+  await page.getByRole("button", { name: /Generate workflow/ }).click();
+  await page.getByRole("button", { name: "Generate Hybrid", exact: true }).click();
   await page.getByRole("button", { name: "Fill hybrid layout" }).click();
   await expect.poll(async () => (await appState(page)).lockedBlockedCellStillPresent).toBe(true);
   expect((await appState(page)).racks).toBeGreaterThan(0);
 });
 
 test("experimental simulation can complete one simple task cycle", async ({ page }) => {
-  await page.getByRole("button", { name: /Simulate/ }).click();
+  await page.getByRole("button", { name: /Simulate workflow/ }).click();
   await expect(page.getByText("2D time-based playback")).toBeVisible();
-  await expect(page.getByText(/Not full MAPF/)).toBeVisible();
+  await expect(page.getByText(/Not full MAPF/).first()).toBeVisible();
   await page.getByRole("button", { name: "Initialize" }).click();
   await page.getByRole("button", { name: "Generate tasks" }).click();
   expect((await appState(page)).simInitialized).toBe(true);

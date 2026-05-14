@@ -11,12 +11,16 @@ import { ImportExportDialog } from "../dialogs/ImportExportDialog";
 import { KeyboardShortcutsDialog } from "../dialogs/KeyboardShortcutsDialog";
 import { NewLayoutDialog } from "../dialogs/NewLayoutDialog";
 import { ProceduralGeneratorDialog } from "../dialogs/ProceduralGeneratorDialog";
+import { AnalyzeWorkflowPanel } from "../panels/AnalyzeWorkflowPanel";
 import { CandidateComparisonDrawer } from "../panels/CandidateComparisonDrawer";
+import { FilesWorkflowPanel } from "../panels/FilesWorkflowPanel";
+import { GenerateWorkflowPanel } from "../panels/GenerateWorkflowPanel";
 import { SimulationPanel } from "../panels/SimulationPanel";
 import { BottomAnalyticsPanel } from "./BottomAnalyticsPanel";
 import { LeftToolbox } from "./LeftToolbox";
 import { RightPropertiesPanel } from "./RightPropertiesPanel";
 import { TopToolbar } from "./TopToolbar";
+import { WorkflowRail } from "./WorkflowRail";
 import { useUiStore } from "../../store/uiStore";
 import { useSimulationStore } from "../../store/simulationStore";
 
@@ -39,7 +43,7 @@ export function AppShell() {
   const selected = useLayoutStore((state) => state.selected);
   const selectedCell = useLayoutStore((state) => state.selectedCell);
   const history = useLayoutStore((state) => state.history);
-  const { activeTool, appMode, hoverCell, zoom } = useUiStore();
+  const { activeTool, appMode, workflow, hoverCell, zoom } = useUiStore();
   const simulationState = useSimulationStore((state) => state.state);
   const simulationStep = useSimulationStore((state) => state.step);
   const validation = useMemo(() => validateLayout(layout), [layout]);
@@ -89,11 +93,12 @@ export function AppShell() {
       <div data-testid="status-bar" className="flex items-center justify-between gap-3 border-b border-border bg-slate-50 px-3 py-1 text-xs text-muted-foreground">
         <span>{statusMessage}</span>
         <span className="min-w-max">
-          Mode: {appMode} | {history.past.length > 0 ? "Unsaved changes" : "Saved baseline"} | Tool: {activeTool} | Selected: {selected[0]?.id ?? (selectedCell ? `cell ${selectedCell.row},${selectedCell.col}` : "none")} | Hover: {hoverCell ? `${hoverCell.row},${hoverCell.col}` : "none"} | Zoom {(zoom * 100).toFixed(0)}% | Validation errors {validation.issues.filter((issue) => issue.severity === "error").length}
+          Workflow: {workflow} | Mode: {appMode} | {history.past.length > 0 ? "Unsaved changes" : "Saved baseline"} | Tool: {activeTool} | Selected: {selected[0]?.id ?? (selectedCell ? `cell ${selectedCell.row},${selectedCell.col}` : "none")} | Hover: {hoverCell ? `${hoverCell.row},${hoverCell.col}` : "none"} | Zoom {(zoom * 100).toFixed(0)}% | Validation errors {validation.issues.filter((issue) => issue.severity === "error").length}
         </span>
       </div>
       <div className="flex min-h-0 flex-1">
-        <LeftToolbox />
+        <WorkflowRail />
+        {workflow === "design" ? <LeftToolbox /> : null}
         <main className="relative min-w-0 flex-1">
           <LayoutCanvas validation={validation} analytics={analytics} />
           <CandidateComparisonDrawer
@@ -110,15 +115,42 @@ export function AppShell() {
             onClose={closeCandidateComparison}
           />
         </main>
-        {appMode === "simulation" ? (
+        {workflow === "generate" ? (
+          <GenerateWorkflowPanel
+            comparison={candidateComparison}
+            onGenerateModeB={() => setGenerateOpen(true)}
+            onGenerateHybrid={() => setHybridOpen(true)}
+            onApplyCandidate={() => {
+              applySelectedCandidate();
+              setStatusMessage("Selected candidate applied and ready for editing");
+            }}
+          />
+        ) : null}
+        {workflow === "analyze" ? (
+          <AnalyzeWorkflowPanel
+            layout={layout}
+            analytics={analytics}
+            validation={validation}
+            onRunValidation={() => setStatusMessage(`Validation ran: ${validation.issues.length} finding${validation.issues.length === 1 ? "" : "s"}`)}
+            onRunAnalytics={() => setStatusMessage(`Analytics refreshed: score ${analytics.scoring.overallLayoutScore.toFixed(1)}, throughput ${analytics.performance.estimatedSystemThroughput.toFixed(1)} /hr`)}
+            onSelectIssue={selectIssue}
+          />
+        ) : null}
+        {workflow === "files" ? (
+          <FilesWorkflowPanel layout={layout} analytics={analytics} onOpenDialog={() => setImportExportOpen(true)} onStatus={setStatusMessage} />
+        ) : null}
+        {workflow === "simulation" ? (
           <SimulationPanel layout={layout} />
-        ) : (
+        ) : null}
+        {workflow === "design" ? (
           <RightPropertiesPanel validation={validation} analytics={analytics} onSelectIssue={selectIssue} />
-        )}
+        ) : null}
       </div>
-      <div className="overflow-x-auto">
-        <BottomAnalyticsPanel analytics={analytics} validation={validation} />
-      </div>
+      {workflow === "analyze" ? (
+        <div className="overflow-x-auto">
+          <BottomAnalyticsPanel analytics={analytics} validation={validation} />
+        </div>
+      ) : null}
       <NewLayoutDialog open={newOpen} onClose={() => setNewOpen(false)} />
       <ProceduralGeneratorDialog open={generateOpen} onClose={() => setGenerateOpen(false)} />
       <HybridGeneratorDialog open={hybridOpen} onClose={() => setHybridOpen(false)} />

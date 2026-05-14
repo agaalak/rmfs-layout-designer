@@ -48,6 +48,7 @@ function objectCells(layout: WarehouseLayout, objectId?: string): GridCell[] {
 }
 
 export interface CandidateComparisonState {
+  baseLayout: WarehouseLayout;
   candidates: WarehouseLayout[];
   summaries: LayoutCandidateSummary[];
   selectedCandidateId: string;
@@ -258,7 +259,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       const selectedLayout = candidates.find((candidate) => candidate.metadata.candidateId === selectedCandidateId || candidate.layoutId === selectedCandidateId) ?? chooseBestProceduralCandidate(params);
       return {
         generationParams: params,
-        candidateComparison: { candidates, summaries, selectedCandidateId, sortKey: "overallLayoutScore" },
+        candidateComparison: { baseLayout: state.history.present, candidates, summaries, selectedCandidateId, sortKey: "overallLayoutScore" },
         history: commit(state.history, {
           ...selectedLayout,
           metadata: { ...selectedLayout.metadata, candidatePreview: true, candidateSummaries: summaries }
@@ -318,7 +319,16 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
         selectedCell: undefined
       };
     }),
-  closeCandidateComparison: () => set({ candidateComparison: undefined }),
+  closeCandidateComparison: () =>
+    set((state) => {
+      const comparison = state.candidateComparison;
+      if (!comparison) return {};
+      const isPreview = Boolean(state.history.present.metadata.candidatePreview);
+      return {
+        candidateComparison: undefined,
+        history: isPreview ? commit(state.history, comparison.baseLayout) : state.history
+      };
+    }),
   generateHybrid: (params) =>
     set((state) => ({
       generationParams: params,

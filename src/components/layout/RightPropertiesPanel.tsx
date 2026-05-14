@@ -8,6 +8,7 @@ import type { CellType, Direction, GridCell, GridConfig, LayoutCell, LayoutMode 
 import { allDirections, traversableCellTypes } from "../../models/grid";
 import { makeRackBins } from "../../generators/proceduralGenerator";
 import { selectedObject, useCurrentLayout, useLayoutStore } from "../../store/layoutStore";
+import { useUiStore } from "../../store/uiStore";
 import type { AnalyticsResult } from "../../analytics/types";
 import type { ValidationResult } from "../../validation/validateLayout";
 import type { ValidationIssue } from "../../validation/validateObjects";
@@ -15,8 +16,6 @@ import { cellKey, deriveDimensions } from "../../utils/gridMath";
 import { rackFootprintCells } from "../../utils/rackFootprint";
 import { autoNumberRackLocations, clearRackSkus, rackBinsFromCsv, rackBinsToCsv, regenerateRackBins, updateRackBin } from "../../utils/rackBins";
 import { downloadTextFile } from "../../importExport/exportLayout";
-import { ValidationPanel } from "../panels/ValidationPanel";
-import { AnalyticsPanel } from "../panels/AnalyticsPanel";
 
 interface RightPropertiesPanelProps {
   validation: ValidationResult;
@@ -39,6 +38,47 @@ function Field({
   );
 }
 
+function PropertyTabStrip({ tabs }: { tabs: string[] }) {
+  return (
+    <div className="flex flex-wrap gap-1" role="tablist" aria-label="Property sections">
+      {tabs.map((tab, index) => (
+        <span key={tab} role="tab" aria-selected={index === 0} className={index === 0 ? "toolbar-button-primary h-7" : "toolbar-button h-7"}>
+          {tab}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function ObjectValidationIssues({
+  issues,
+  onSelectIssue
+}: {
+  issues: ValidationIssue[];
+  onSelectIssue: (issue: ValidationIssue) => void;
+}) {
+  if (issues.length === 0) {
+    return (
+      <section className="rounded-md border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-700">
+        No validation issues for the current selection.
+      </section>
+    );
+  }
+  return (
+    <section className="flex min-h-0 flex-col">
+      <div className="panel-title">Selection Validation</div>
+      <div className="mt-2 max-h-40 overflow-auto rounded-md border border-border bg-white">
+        {issues.map((issue) => (
+          <button key={issue.id} className="block w-full border-b border-border p-2 text-left text-xs last:border-b-0 hover:bg-slate-50" onClick={() => onSelectIssue(issue)}>
+            <div className={issue.severity === "error" ? "font-semibold text-red-600" : "font-semibold text-amber-700"}>{issue.severity.toUpperCase()}</div>
+            <div>{issue.message}</div>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 const number = (event: ChangeEvent<HTMLInputElement>) => Number(event.target.value);
 
 export function RightPropertiesPanel({ validation, analytics, onSelectIssue }: RightPropertiesPanelProps) {
@@ -55,11 +95,19 @@ export function RightPropertiesPanel({ validation, analytics, onSelectIssue }: R
     moveObject,
     setCellDirections,
     updateCell,
-    toggleSelectedLock
+    toggleSelectedLock,
+    newLayout,
+    loadDemo
   } = useLayoutStore();
+  const setWorkflow = useUiStore((state) => state.setWorkflow);
   const object = selectedObject(layout, selected);
   const first = selected[0];
   const selectedLayoutCell = selectedCell ? layout.cells.find((cell) => cellKey(cell) === cellKey(selectedCell)) : undefined;
+  const relatedIssues = validation.issues.filter((issue) => {
+    if (first) return issue.objectId === first.id;
+    if (selectedCell && issue.cell) return cellKey(selectedCell) === cellKey(issue.cell);
+    return false;
+  });
 
   return (
     <aside className="hidden w-80 shrink-0 flex-col gap-4 overflow-auto border-l border-border bg-panel p-3 xl:flex">
@@ -74,6 +122,21 @@ export function RightPropertiesPanel({ validation, analytics, onSelectIssue }: R
       ) : null}
       {!first && !selectedCell ? (
         <section className="flex flex-col gap-2">
+          <div className="rounded-md border border-teal-200 bg-teal-50 p-3 text-xs text-teal-800">
+            <div className="font-semibold">Quick start</div>
+            <div className="mt-1 text-teal-700">Use Design tools to draw roads, place racks and stations, then switch to Analyze to validate the layout.</div>
+            <div className="mt-3 grid gap-2">
+              <button className="toolbar-button-primary justify-center" onClick={() => newLayout()}>
+                Start empty Mode A layout
+              </button>
+              <button className="toolbar-button justify-center" onClick={() => setWorkflow("generate")}>
+                Generate layout
+              </button>
+              <button className="toolbar-button justify-center" onClick={() => loadDemo()}>
+                Load demo
+              </button>
+            </div>
+          </div>
           <Field label="Layout name">
             <input className="field-input" value={layout.name} onChange={(event) => updateLayoutMeta({ name: event.target.value })} />
           </Field>
@@ -138,8 +201,7 @@ export function RightPropertiesPanel({ validation, analytics, onSelectIssue }: R
       {first?.kind === "rotation" && object ? (
         <RotationProperties zone={object as RotationZone} updateRotation={updateRotation} toggleLock={toggleSelectedLock} />
       ) : null}
-      <ValidationPanel validation={validation} onSelectIssue={onSelectIssue} />
-      <AnalyticsPanel analytics={analytics} />
+      {(first || selectedCell) ? <ObjectValidationIssues issues={relatedIssues} onSelectIssue={onSelectIssue} /> : null}
     </aside>
   );
 }
@@ -285,6 +347,7 @@ function RackProperties({
   };
   return (
     <section className="flex flex-col gap-2">
+      <PropertyTabStrip tabs={["General", "Geometry", "Faces & Bins", "Inventory", "Validation"]} />
       <label className="flex items-center gap-2 rounded-md border border-border bg-white px-2 py-2 text-xs">
         <input type="checkbox" checked={Boolean(rack.locked)} onChange={toggleLock} />
         Locked hybrid constraint
@@ -466,6 +529,7 @@ function StationProperties({
   };
   return (
     <section className="flex flex-col gap-2">
+      <PropertyTabStrip tabs={["General", "Service", "Queue", "Orientation", "Validation"]} />
       <label className="flex items-center gap-2 rounded-md border border-border bg-white px-2 py-2 text-xs">
         <input type="checkbox" checked={Boolean(station.locked)} onChange={toggleLock} />
         Locked hybrid constraint
@@ -555,6 +619,7 @@ function ChargerProperties({
   };
   return (
     <section className="flex flex-col gap-2">
+      <PropertyTabStrip tabs={["General", "Capacity", "Validation"]} />
       <label className="flex items-center gap-2 rounded-md border border-border bg-white px-2 py-2 text-xs">
         <input type="checkbox" checked={Boolean(charger.locked)} onChange={toggleLock} />
         Locked hybrid constraint
@@ -609,6 +674,7 @@ function ParkingProperties({
 }) {
   return (
     <section className="flex flex-col gap-2">
+      <PropertyTabStrip tabs={["General", "Validation"]} />
       <label className="flex items-center gap-2 rounded-md border border-border bg-white px-2 py-2 text-xs">
         <input type="checkbox" checked={Boolean(parking.locked)} onChange={toggleLock} />
         Locked hybrid constraint
@@ -650,6 +716,7 @@ function RotationProperties({
   const first = zone.cells[0];
   return (
     <section className="flex flex-col gap-2">
+      <PropertyTabStrip tabs={["General", "Supported Orientations", "Validation"]} />
       <label className="flex items-center gap-2 rounded-md border border-border bg-white px-2 py-2 text-xs">
         <input type="checkbox" checked={Boolean(zone.locked)} onChange={toggleLock} />
         Locked hybrid constraint

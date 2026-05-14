@@ -46,6 +46,14 @@ textarea {
   @apply inline-flex h-8 items-center justify-center gap-1 rounded-md border border-border bg-panel px-2 text-xs font-medium text-foreground shadow-panel transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50;
 }
 
+.toolbar-button-primary {
+  @apply inline-flex h-8 items-center justify-center gap-1 rounded-md border border-teal-700 bg-teal-700 px-2 text-xs font-semibold text-white shadow-panel transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+.toolbar-button-ghost {
+  @apply inline-flex h-8 items-center justify-center gap-1 rounded-md border border-transparent bg-transparent px-2 text-xs font-medium text-foreground transition hover:border-border hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50;
+}
+
 .icon-button {
   @apply inline-flex size-8 items-center justify-center rounded-md border border-border bg-panel text-foreground shadow-panel transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50;
 }
@@ -68,4 +76,16 @@ textarea {
 
 .tool-button-active {
   @apply border-primary bg-teal-50 text-teal-900;
+}
+
+.badge-stable {
+  @apply rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800;
+}
+
+.badge-experimental {
+  @apply rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800;
+}
+
+.metric-card {
+  @apply rounded-md border border-border bg-white p-2 shadow-panel;
 }

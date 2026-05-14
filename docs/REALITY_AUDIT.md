@@ -8,11 +8,32 @@ This audit was written after running the app, exercising the UI in a browser, an
 
 - `git pull --ff-only`: already up to date.
 - `npm install`: passed, 0 vulnerabilities.
-- `npm run build`: passed. Vite still reports a large bundle warning.
-- `npm test -- --run`: passed, 9 files / 45 tests.
+- `npm run build`: passed. The previous large single-bundle warning is resolved by manual chunks.
+- `npm test -- --run`: passed, 10 files / 52 tests.
 - `npm run dev`: passed, served at `http://127.0.0.1:5174/`.
 - Browser QA with the in-app browser: app opened, demo loaded, Mode A tool clicks worked, Mode B candidate drawer opened/applied, Simulation panel opened.
 - `npm run test:e2e -- --workers=1`: passed, 8 browser tests.
+
+## UX Re-Audit Addendum
+
+Date: 2026-05-13
+
+Additional commands run for the workflow/UI pass:
+
+- `npm run build`: passed with manual chunks and no large single-bundle warning.
+- `npm test -- --run`: passed, 10 files / 52 tests.
+- `npm run test:e2e -- --workers=1`: passed, 8 browser tests.
+
+Verified UI changes:
+
+- App opens with the demo layout and the new workflow rail.
+- Design workflow shows grouped tools and object/layout properties.
+- Generate workflow opens Mode B/Hybrid dialogs and candidate comparison.
+- Analyze workflow shows validation/analytics cards, tabs, filters, and heatmap controls.
+- Files workflow exposes JSON/report/image/analytics exports.
+- Simulation workflow is clearly labeled Experimental and grouped into setup, tasks, playback, metrics, visual options, event log, and exports.
+- Empty Design state includes quick actions for empty Mode A, Generate, and Load demo.
+- Candidate preview close now restores the original active layout unless a candidate is explicitly applied.
 
 ## 1. App Startup
 
@@ -164,6 +185,7 @@ Why Experimental:
 
 - P1: Add richer reachability diagnostics explaining which waypoint/approach is missing.
 - P1: Add mouse-drag E2E coverage for every object type, not only rack/property-panel moves.
+- P1: Add real slide-out drawers for tablet-width side panels.
 - P1: Add explicit simulation deadlock/replan reporting when reservations fail repeatedly.
 - P2: Add candidate thumbnail previews after the core workflows remain stable.
-- P2: Split the large Vite bundle with dynamic imports.
+- P2: Lazy-load heavy dialogs/panels and virtualize large rack bin tables.

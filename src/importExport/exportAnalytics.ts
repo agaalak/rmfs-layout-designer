@@ -53,8 +53,8 @@ export function exportSummaryMarkdown(layout: WarehouseLayout, analytics: Analyt
 
 ## Limitations
 
-- No visual robot movement simulation.
-- No MAPF traffic planning.
-- No collision avoidance model.
+- Analytics are separate from Experimental Simulation Mode.
+- No full MAPF traffic planning.
+- No production-grade collision-avoidance model.
 `;
 }

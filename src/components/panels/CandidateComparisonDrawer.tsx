@@ -25,6 +25,18 @@ function num(value: number) {
   return value.toFixed(1);
 }
 
+function CandidateBadge({ errors, family }: { errors: number; family: string }) {
+  const experimental = family === "true_flying_v" || family === "flying_v_placeholder";
+  return (
+    <div className="flex flex-wrap gap-1">
+      <span className={errors > 0 ? "rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700" : "rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700"}>
+        {errors > 0 ? "Invalid" : "Valid"}
+      </span>
+      {experimental ? <span className="badge-experimental">Experimental family</span> : null}
+    </div>
+  );
+}
+
 export function CandidateComparisonDrawer({ comparison, onSelect, onSort, onApply, onClose }: CandidateComparisonDrawerProps) {
   if (!comparison) return null;
   const top3 = comparison.summaries.slice(0, 3);
@@ -34,7 +46,7 @@ export function CandidateComparisonDrawer({ comparison, onSelect, onSort, onAppl
         <div>
           <div className="text-sm font-semibold">Generated Layout Candidates</div>
           <div className="text-xs text-muted-foreground">
-            {comparison.summaries.length} candidates generated. Select a row to preview it on the canvas, then apply to edit.
+            {comparison.summaries.length} candidates generated. Preview is temporary; apply a candidate to make it the editable layout.
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -51,7 +63,10 @@ export function CandidateComparisonDrawer({ comparison, onSelect, onSort, onAppl
           <button className="toolbar-button" onClick={onApply}>
             Apply Selected Candidate
           </button>
-          <button className="icon-button" title="Close candidate drawer" onClick={onClose}>
+          <button className="toolbar-button" onClick={onClose}>
+            Return to active layout
+          </button>
+          <button className="icon-button" title="Close candidate drawer" aria-label="Close candidate drawer" onClick={onClose}>
             X
           </button>
         </div>
@@ -61,7 +76,7 @@ export function CandidateComparisonDrawer({ comparison, onSelect, onSort, onAppl
           <table className="w-full border-collapse text-xs">
             <thead className="sticky top-0 bg-white text-left text-slate-600">
               <tr>
-                {["Candidate", "Family", "Racks", "Stations", "Chargers", "Parking", "Density", "Avg dist", "P90 dist", "Congestion", "Orient.", "Score", "Errors"].map((header) => (
+                {["Candidate", "Status", "Family", "Racks", "Stations", "Chargers", "Parking", "Density", "Avg dist", "P90 dist", "Congestion", "Orient.", "Score", "Errors", "Action"].map((header) => (
                   <th key={header} className="border-b border-border px-2 py-2 font-semibold">
                     {header}
                   </th>
@@ -78,6 +93,7 @@ export function CandidateComparisonDrawer({ comparison, onSelect, onSort, onAppl
                     onClick={() => onSelect(summary.candidateId)}
                   >
                     <td className="whitespace-nowrap px-2 py-2 font-semibold">{summary.candidateId}</td>
+                    <td className="px-2 py-2"><CandidateBadge errors={summary.validationErrorCount} family={summary.layoutFamily} /></td>
                     <td className="px-2 py-2">{summary.layoutFamily}</td>
                     <td className="px-2 py-2">{summary.rackCount}</td>
                     <td className="px-2 py-2">{summary.stationCount}</td>
@@ -91,6 +107,17 @@ export function CandidateComparisonDrawer({ comparison, onSelect, onSort, onAppl
                     <td className="px-2 py-2 font-semibold">{num(summary.overallLayoutScore)}</td>
                     <td className={`px-2 py-2 font-semibold ${summary.validationErrorCount > 0 ? "text-red-600" : "text-emerald-700"}`}>
                       {summary.validationErrorCount}
+                    </td>
+                    <td className="px-2 py-2">
+                      <button
+                        className={selected ? "toolbar-button-primary h-7" : "toolbar-button h-7"}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onSelect(summary.candidateId);
+                        }}
+                      >
+                        Preview
+                      </button>
                     </td>
                   </tr>
                 );
@@ -115,6 +142,15 @@ export function CandidateComparisonDrawer({ comparison, onSelect, onSort, onAppl
                   <span>P90 {num(summary.p90RackToStationDistance)} m</span>
                   <span>Errors {summary.validationErrorCount}</span>
                 </div>
+                <details className="mt-2 rounded border border-slate-200 bg-slate-50 p-2">
+                  <summary className="cursor-pointer font-semibold text-slate-600">Why this score?</summary>
+                  <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-muted-foreground">
+                    <span>Storage {pct(summary.storageDensity)}</span>
+                    <span>Distance {num(summary.averageRackToStationDistance)} m</span>
+                    <span>Congestion {num(summary.congestionRiskScore)}</span>
+                    <span>Orientation {num(summary.orientationPenaltyScore)}</span>
+                  </div>
+                </details>
               </div>
             ))}
           </div>

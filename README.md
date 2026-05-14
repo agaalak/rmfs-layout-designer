@@ -23,6 +23,18 @@ This is not the final 3D robot simulator, and it is not a full RAWSim-O replacem
 - Edit rack bins in a table and import/export rack-bin CSV files.
 - Switch to Experimental Simulation Mode, initialize robots, generate simple rack-to-station tasks, play/pause/step a 2D top-down simulation, and export simulation metrics/logs.
 
+## Workflow-Oriented UI
+
+The main UI is organized by workflow instead of one overloaded toolbar:
+
+- Design: manual editing, grouped drawing/placement tools, selection, rotation, deletion, and object properties.
+- Generate: Mode B generation, Hybrid generation, candidate preview, score comparison, and explicit apply.
+- Analyze: validation, analytics cards/tabs, heatmap controls, issue filters, and analytics/report exports.
+- Simulate: Experimental 2D playback controls, task setup, metrics, event log, and simulation exports.
+- Files: import/export layout JSON, PNG/SVG image export, Markdown report, and analytics exports.
+
+The header shows the current layout, workflow, unsaved state, and a primary contextual action. The left workflow rail switches between workflows; the left toolbox appears for Design and is grouped into Navigation, Draw Cells, Place Resources, and Traffic.
+
 ## Modes
 
 Mode A, manual, starts with an empty grid. Use the left toolbox to draw roads, rack storage, queues, blocked cells, human zones, and docks, or place racks, stations, chargers, parking, and rotation zones.
@@ -160,6 +172,12 @@ npm run build
 npm run test:e2e
 ```
 
+The current verified pass used:
+
+- `npm run build`
+- `npm test -- --run`
+- `npm run test:e2e -- --workers=1`
+
 ## Controls
 
 - Select tool: click an object to select it.
@@ -170,6 +188,7 @@ npm run test:e2e
 - `Delete`: delete selected objects.
 - `Ctrl+C` / `Ctrl+V`: copy and paste selected racks.
 - Toolbar buttons: undo, redo, zoom, fit, toggle grid, labels, arrows, and heatmap.
+- Workflow rail: switch between Design, Generate, Analyze, Simulate Experimental, and Files.
 - Traffic tool: select a cell and edit allowed directions in the property panel.
 - Locking: select a cell or object and use the Locked checkbox in the property panel before Hybrid generation.
 - Keyboard shortcuts button: opens an in-app shortcut reference.

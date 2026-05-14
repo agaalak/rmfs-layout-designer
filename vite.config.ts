@@ -3,6 +3,17 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ["react", "react-dom", "zustand"],
+          canvas: ["konva", "react-konva"],
+          icons: ["lucide-react"]
+        }
+      }
+    }
+  },
   test: {
     environment: "jsdom",
     globals: true,

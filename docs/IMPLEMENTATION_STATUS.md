@@ -3,11 +3,13 @@
 ## Already Implemented
 
 - React, TypeScript, Vite, Tailwind, Zustand, and React Konva application scaffold.
-- Five-section editor shell: top toolbar, left toolbox, 2D grid canvas, right properties panel, and bottom analytics panel.
+- Workflow-oriented editor shell with app header, contextual toolbar, workflow rail, grouped Design toolbox, 2D grid canvas, workflow-specific right panels, and status bar.
+- Primary workflows: Design, Generate, Analyze, Simulate Experimental, and Files.
 - Manual Mode A layout creation from an empty grid.
 - Procedural Mode B generation for external, internal, distributed, hybrid, dense cross-aisle, and true stair-step Flying-V families.
 - Stable Mode B families are traditional external, internal centralized, internal distributed, hybrid external/internal, and dense cross-aisle. True Flying-V is Experimental. The old Flying-V placeholder option is disabled in the UI.
 - Generated layout candidate comparison drawer with sortable metrics, top-three comparison, preview, and apply workflow.
+- Candidate preview/apply UX now separates temporary preview from final apply; closing an unapplied preview restores the previous active layout.
 - Hybrid generation that starts from the current layout and fills around protected constraints.
 - Visual object placement for racks, stations, queues, chargers, parking spots, rotation zones, blocked cells, human zones, and docks.
 - Object selection, drag/drop movement, deletion, rotation, copy/paste for racks, undo, and redo.
@@ -18,11 +20,13 @@
 - Controlled multi-cell rack footprints up to `2x2` cells with multi-cell rendering, validation, movement, rotation, graph approach nodes, and import/export roundtrip support.
 - Validation for bounds, footprint, overlap, charger size, parking size, connectivity, and orientation/face access.
 - Analytics modules for storage, distance, orientation, station balance, congestion proxy, performance estimates, and scoring.
+- Analyze workflow with summary cards, topic tabs, validation filters, heatmap controls, and analytics/report exports.
 - Toggleable heatmap overlay with distance, congestion, and validation modes.
 - Import/export for versioned layout JSON, analytics JSON, analytics CSV, Markdown report, PNG, and SVG.
 - Import migration for older layouts without a schema version and user-friendly invalid JSON errors.
 - Status bar with selected tool/object/cell, hover row/column, zoom, validation error count, and unsaved changes indicator.
 - Keyboard shortcut help dialog, clear-layout confirmation, and load-demo dirty-layout confirmation.
+- Quick-start empty state with Start empty Mode A layout, Generate layout, and Load demo actions.
 - Default demo layout on first load and a toolbar Load Demo action.
 - Design/Simulation mode toggle that locks normal editing during simulator playback.
 - 2D simulation data models for robots, tasks, route plans, station queues, reservation snapshots, event logs, and metrics.
@@ -38,6 +42,7 @@
 - Graph construction now derives routing waypoints before building road edges.
 - Playwright E2E suite for startup, manual editing, validation, import/export, Mode B, Hybrid, and Experimental Simulation Mode.
 - README explaining RMFS concepts, modes, analytics, validation, import/export, limitations, and roadmap.
+- UI/UX guidelines, UX audit, and performance notes documenting workflow structure and future contributor rules.
 
 ## Partially Implemented
 
@@ -51,6 +56,7 @@
 - Loaded-robot reservations currently focus on robot cell conflicts; full carried-rack swept-envelope reservation is still future work.
 - Storage locations are not yet first-class persisted records; they are still inferred from rack home cells and rack-storage cells.
 - Orders/order lines and SKU-based rack selection are documented but not yet part of the main UI workflow.
+- Responsive behavior is improved but not complete; below desktop widths the UI compacts, but true slide-out tablet drawers remain future work.
 
 ## Missing Features
 
@@ -78,19 +84,23 @@
 - Stabilization pass marked Simulation Mode Experimental, disabled the old Flying-V placeholder option, and marked true Flying-V Experimental.
 - Stabilization pass added `docs/REALITY_AUDIT.md` and `docs/RAWSIMO_ALIGNMENT.md`.
 - Stabilization pass added Playwright E2E tests and fixed Vitest configuration so browser specs are not run by the unit-test runner.
+- UX pass replaced the overloaded toolbar with workflow navigation and contextual toolbars.
+- UX pass reorganized the toolbox, property panels, Analyze workflow, candidate drawer, and Experimental Simulation presentation.
+- UX pass split Vite chunks so the previous large single-bundle warning is gone.
 
 ## Test Status
 
 - `npm install`: passed, 0 vulnerabilities.
-- `npm run build`: passed. Vite still reports the expected large single-bundle warning.
-- `npm test -- --run`: 9 files passed, 45 tests passed.
+- `npm run build`: passed. Manual chunks now avoid the previous large single-bundle warning.
+- `npm test -- --run`: 10 files passed, 52 tests passed.
 - `npm run test:e2e -- --workers=1`: 8 browser tests passed.
-- Browser QA at `http://127.0.0.1:5174/`: passed for app load, demo layout, Simulation Mode, initialize robots, generate tasks, step, play/pause, metrics/event log updates, and fresh console health.
+- Browser QA through Playwright at `http://127.0.0.1:5174/`: passed for app load, demo layout, manual editing, Mode B candidate workflow, Hybrid lock preservation, Files import/export, Analyze validation/analytics, and Experimental Simulation one-cycle playback.
 
 ## Completion Plan
 
 1. Keep the current React/Konva/Zustand architecture.
-2. Improve candidate previews with thumbnail mini-maps.
-3. Add virtualized bin tables for very large rack configurations.
-4. Deepen the simulator with explicit rack-rotation dwell events, richer charging/battery policies, and better deadlock recovery.
-5. Continue toward full MAPF, CAD/DXF import, 3D view, and cloud persistence in later passes.
+2. Add true slide-out drawers for tablet widths.
+3. Improve candidate previews with thumbnail mini-maps.
+4. Add virtualized bin tables for very large rack configurations.
+5. Deepen the simulator with explicit rack-rotation dwell events, richer charging/battery policies, and better deadlock recovery.
+6. Continue toward full MAPF, CAD/DXF import, 3D view, and cloud persistence in later passes.

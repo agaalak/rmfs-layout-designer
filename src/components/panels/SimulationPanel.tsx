@@ -73,18 +73,22 @@ export function SimulationPanel({ layout }: { layout: WarehouseLayout }) {
         <div className="mt-1 text-xs text-muted-foreground">2D time-based playback over the current road graph. Not full MAPF or final traffic control.</div>
       </div>
 
-      <section className="grid grid-cols-4 gap-2">
-        <button className="toolbar-button justify-center" onClick={() => initialize(layout)}>Initialize</button>
-        <button className="toolbar-button justify-center" onClick={() => generateTasks(layout)} disabled={!state.initialized}>Generate tasks</button>
-        <button className="toolbar-button justify-center" onClick={state.isRunning ? pause : play} disabled={!state.initialized}>{state.isRunning ? "Pause" : "Play"}</button>
-        <button className="toolbar-button justify-center" onClick={() => step(layout, 1)} disabled={!state.initialized}>Step</button>
-        <button className="toolbar-button justify-center" onClick={reset}>Reset</button>
-        <select className="field-input col-span-3 h-9" value={state.speedMultiplier} onChange={(event) => setSpeedMultiplier(Number(event.target.value))}>
-          {[0.25, 0.5, 1, 2, 5, 10].map((value) => <option key={value} value={value}>{value}x speed</option>)}
-        </select>
+      <section className="grid gap-2">
+        <div className="panel-title">Playback</div>
+        <div className="grid grid-cols-4 gap-2">
+          <button className="toolbar-button justify-center" onClick={() => initialize(layout)}>Initialize</button>
+          <button className="toolbar-button justify-center" onClick={() => generateTasks(layout)} disabled={!state.initialized}>Generate tasks</button>
+          <button className="toolbar-button justify-center" onClick={state.isRunning ? pause : play} disabled={!state.initialized}>{state.isRunning ? "Pause" : "Play"}</button>
+          <button className="toolbar-button justify-center" onClick={() => step(layout, 1)} disabled={!state.initialized}>Step</button>
+          <button className="toolbar-button justify-center" onClick={() => (state.tasks.length > 0 ? window.confirm("Reset active simulation state?") && reset() : reset())}>Reset</button>
+          <select className="field-input col-span-3 h-9" value={state.speedMultiplier} onChange={(event) => setSpeedMultiplier(Number(event.target.value))}>
+            {[0.25, 0.5, 1, 2, 5, 10].map((value) => <option key={value} value={value}>{value}x speed</option>)}
+          </select>
+        </div>
       </section>
 
       <section className="grid grid-cols-2 gap-2 rounded-md border border-border bg-slate-50 p-2 text-xs">
+        <div className="col-span-2 panel-title">Metrics</div>
         <div><span className="text-muted-foreground">Time</span><div className="font-semibold">{state.simTimeSec.toFixed(1)}s</div></div>
         <div><span className="text-muted-foreground">State</span><div className="font-semibold">{state.isRunning ? "Running" : "Paused"}</div></div>
         <div><span className="text-muted-foreground">Robots</span><div className="font-semibold">{state.metrics.activeRobotCount}</div></div>
@@ -99,6 +103,7 @@ export function SimulationPanel({ layout }: { layout: WarehouseLayout }) {
       </section>
 
       <section className="grid grid-cols-2 gap-2">
+        <div className="col-span-2 panel-title">Setup</div>
         <Field label="Robot count"><input className="field-input" type="number" value={config.robotCount} onChange={(event) => set("robotCount", number(event))} /></Field>
         <Field label="Task count"><input className="field-input" type="number" value={config.taskCount} onChange={(event) => set("taskCount", number(event))} /></Field>
         <Field label="Unloaded m/s"><input className="field-input" type="number" step="0.1" value={config.unloadedSpeedMps} onChange={(event) => set("unloadedSpeedMps", number(event))} /></Field>
@@ -120,6 +125,7 @@ export function SimulationPanel({ layout }: { layout: WarehouseLayout }) {
       </section>
 
       <section className="grid grid-cols-2 gap-2 rounded-md border border-border bg-white p-2">
+        <div className="col-span-2 panel-title">Tasks</div>
         <Field label="Manual rack">
           <select className="field-input" value={manualRackId ?? layout.racks[0]?.id ?? ""} onChange={(event) => setManualRack(event.target.value)}>
             {layout.racks.slice(0, 250).map((rack) => <option key={rack.id} value={rack.id}>{rack.rackId}</option>)}
@@ -134,6 +140,7 @@ export function SimulationPanel({ layout }: { layout: WarehouseLayout }) {
       </section>
 
       <section className="grid grid-cols-2 gap-2 text-xs">
+        <div className="col-span-2 panel-title">Visual Options</div>
         {[
           ["showPaths", "Show paths"],
           ["showReservations", "Show reservations"],
@@ -148,6 +155,7 @@ export function SimulationPanel({ layout }: { layout: WarehouseLayout }) {
       </section>
 
       <section className="grid grid-cols-2 gap-2">
+        <div className="col-span-2 panel-title">Exports</div>
         <label className="toolbar-button cursor-pointer justify-center">
           Import config
           <input className="hidden" type="file" accept="application/json,.json" onChange={importConfig} />
