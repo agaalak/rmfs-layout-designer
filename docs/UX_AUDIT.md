@@ -9,7 +9,8 @@ This audit reflects the current UI after running the build, unit tests, Playwrig
 - `npm install`: passed, 0 vulnerabilities.
 - `npm run build`: passed.
 - `npm test -- --run`: passed, 10 test files / 52 tests.
-- `npm run test:e2e -- --workers=1`: passed, 8 browser tests.
+- `npm run test:e2e:smoke -- --workers=1`: passed, 3 browser smoke tests.
+- `npm run test:e2e -- --workers=1`: passed, 11 browser tests.
 - `npm run dev`: Vite starts on `http://127.0.0.1:5174/`.
 
 ## Current Screen Structure
@@ -105,16 +106,18 @@ Fix:
 ## Responsive / Small-Screen Problems
 
 - P1: Desktop remains the primary target.
-- P2: Below desktop width, panels become compact but are not yet a polished mobile/tablet workflow.
+- P2: Below desktop width, panels now open as drawers, but the experience is still optimized for tablet-plus rather than phones.
 
 Current mitigation:
 
-- The workflow rail and toolbox compact at smaller widths.
+- The workflow rail stays accessible.
+- Design tools and workflow panels open through responsive drawer buttons.
 - The app header warns that layout editing is best on a larger screen.
 
 Remaining:
 
-- Replace compact side panels with real slide-out drawers below 1024 px.
+- Add Escape-close/focus-trap hardening for responsive drawers.
+- Add more visual QA at 768-1024 px widths.
 
 ## Keyboard Accessibility Problems
 
@@ -146,7 +149,7 @@ Fix:
 
 ## Remaining Prioritized UX Issues
 
-- P1: Add true slide-out drawers for tablet widths.
+- P1: Add focus trap and Escape-close behavior for responsive drawers.
 - P1: Add richer dialog accessibility tests.
 - P1: Add candidate mini-map thumbnails.
 - P2: Add more refined visual density controls for very large layouts.

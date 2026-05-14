@@ -16,6 +16,7 @@ interface AnalyzeWorkflowPanelProps {
   onRunValidation: () => void;
   onRunAnalytics: () => void;
   onSelectIssue: (issue: ValidationIssue) => void;
+  display?: "desktop" | "drawer";
 }
 
 type AnalyzeTab = "validation" | "storage" | "distance" | "stations" | "orientation" | "congestion" | "performance" | "exports";
@@ -60,7 +61,8 @@ export function AnalyzeWorkflowPanel({
   validation,
   onRunValidation,
   onRunAnalytics,
-  onSelectIssue
+  onSelectIssue,
+  display = "desktop"
 }: AnalyzeWorkflowPanelProps) {
   const [tab, setTab] = useState<AnalyzeTab>("validation");
   const [severityFilter, setSeverityFilter] = useState<"all" | ValidationIssue["severity"]>("all");
@@ -73,7 +75,14 @@ export function AnalyzeWorkflowPanel({
   const peakQueuePressure = queuePressure.length > 0 ? Math.max(...queuePressure) : 0;
 
   return (
-    <aside className="hidden w-[26rem] shrink-0 flex-col gap-4 overflow-auto border-l border-border bg-panel p-3 xl:flex">
+    <aside
+      className={cn(
+        display === "desktop"
+          ? "hidden w-[26rem] shrink-0 flex-col gap-4 overflow-auto border-l border-border bg-panel p-3 xl:flex"
+          : "flex h-full w-full flex-col gap-4 overflow-auto bg-panel p-3"
+      )}
+      aria-label="Analyze panel"
+    >
       <div>
         <div className="panel-title">Analyze</div>
         <div className="mt-2 grid grid-cols-2 gap-2">

@@ -43,20 +43,27 @@ const groups: Array<{ title: string; tools: EditorTool[] }> = [
   { title: "Traffic", tools: ["traffic"] }
 ];
 
-export function LeftToolbox() {
+export function LeftToolbox({ display = "desktop" }: { display?: "desktop" | "drawer" }) {
   const { activeTool, workflow, appMode, setTool } = useUiStore();
   const disabled = appMode === "simulation" || workflow !== "design";
   const activeHint = toolMeta[activeTool]?.hint;
   return (
-    <aside className="w-64 shrink-0 overflow-auto border-r border-border bg-panel p-3 max-lg:w-16 max-lg:p-2" aria-label="Design toolbox">
-      <div className="mb-3 max-lg:hidden">
+    <aside
+      className={cn(
+        display === "desktop"
+          ? "hidden w-64 shrink-0 overflow-auto border-r border-border bg-panel p-3 lg:flex lg:flex-col"
+          : "flex h-full w-full flex-col overflow-auto bg-panel p-3"
+      )}
+      aria-label="Design toolbox"
+    >
+      <div className="mb-3">
         <div className="panel-title">Design Tools</div>
         <div className="mt-1 text-xs text-muted-foreground">Grouped by the task you are doing.</div>
       </div>
       <div className="flex flex-col gap-2">
         {groups.map((group) => (
           <details key={group.title} className="rounded-md border border-border bg-white" open>
-            <summary className="cursor-pointer px-2 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 max-lg:hidden">{group.title}</summary>
+            <summary className="cursor-pointer px-2 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{group.title}</summary>
             <div className="flex flex-col gap-1 p-1">
               {group.tools.map((tool) => {
                 const meta = toolMeta[tool];
@@ -73,8 +80,8 @@ export function LeftToolbox() {
                     onClick={() => setTool(tool)}
                   >
                     <Icon data-icon="inline-start" />
-                    <span className="truncate max-lg:hidden">{meta.label}</span>
-                    {meta.shortcut ? <span className="ml-auto text-[10px] text-muted-foreground max-lg:hidden">{meta.shortcut}</span> : null}
+                    <span className="truncate">{meta.label}</span>
+                    {meta.shortcut ? <span className="ml-auto text-[10px] text-muted-foreground">{meta.shortcut}</span> : null}
                   </button>
                 );
               })}
@@ -82,7 +89,7 @@ export function LeftToolbox() {
           </details>
         ))}
       </div>
-      <div className="mt-3 rounded-md border border-border bg-slate-50 p-2 text-xs text-muted-foreground max-lg:hidden">
+      <div className="mt-3 rounded-md border border-border bg-slate-50 p-2 text-xs text-muted-foreground">
         {disabled
           ? "Editing is disabled outside Design. Return to Design to draw, place, or move layout objects."
           : activeHint}

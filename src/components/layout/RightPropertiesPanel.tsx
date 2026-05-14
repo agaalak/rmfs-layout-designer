@@ -16,11 +16,13 @@ import { cellKey, deriveDimensions } from "../../utils/gridMath";
 import { rackFootprintCells } from "../../utils/rackFootprint";
 import { autoNumberRackLocations, clearRackSkus, rackBinsFromCsv, rackBinsToCsv, regenerateRackBins, updateRackBin } from "../../utils/rackBins";
 import { downloadTextFile } from "../../importExport/exportLayout";
+import { cn } from "../../utils/cn";
 
 interface RightPropertiesPanelProps {
   validation: ValidationResult;
   analytics: AnalyticsResult;
   onSelectIssue: (issue: ValidationIssue) => void;
+  display?: "desktop" | "drawer";
 }
 
 function Field({
@@ -81,7 +83,7 @@ function ObjectValidationIssues({
 
 const number = (event: ChangeEvent<HTMLInputElement>) => Number(event.target.value);
 
-export function RightPropertiesPanel({ validation, analytics, onSelectIssue }: RightPropertiesPanelProps) {
+export function RightPropertiesPanel({ validation, analytics, onSelectIssue, display = "desktop" }: RightPropertiesPanelProps) {
   const layout = useCurrentLayout();
   const selected = useLayoutStore((state) => state.selected);
   const selectedCell = useLayoutStore((state) => state.selectedCell);
@@ -110,7 +112,14 @@ export function RightPropertiesPanel({ validation, analytics, onSelectIssue }: R
   });
 
   return (
-    <aside className="hidden w-80 shrink-0 flex-col gap-4 overflow-auto border-l border-border bg-panel p-3 xl:flex">
+    <aside
+      className={cn(
+        display === "desktop"
+          ? "hidden w-80 shrink-0 flex-col gap-4 overflow-auto border-l border-border bg-panel p-3 xl:flex"
+          : "flex h-full w-full flex-col gap-4 overflow-auto bg-panel p-3"
+      )}
+      aria-label="Properties panel"
+    >
       <div>
         <div className="panel-title">Properties</div>
         <div className="mt-2 text-xs text-muted-foreground">

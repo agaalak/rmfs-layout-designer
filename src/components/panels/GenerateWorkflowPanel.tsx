@@ -1,11 +1,13 @@
 import { CheckCircle2, ListOrdered, Sparkles } from "lucide-react";
 import type { CandidateComparisonState } from "../../store/layoutStore";
+import { cn } from "../../utils/cn";
 
 interface GenerateWorkflowPanelProps {
   comparison?: CandidateComparisonState;
   onGenerateModeB: () => void;
   onGenerateHybrid: () => void;
   onApplyCandidate: () => void;
+  display?: "desktop" | "drawer";
 }
 
 function num(value: number) {
@@ -16,12 +18,20 @@ export function GenerateWorkflowPanel({
   comparison,
   onGenerateModeB,
   onGenerateHybrid,
-  onApplyCandidate
+  onApplyCandidate,
+  display = "desktop"
 }: GenerateWorkflowPanelProps) {
   const selected = comparison?.summaries.find((summary) => summary.candidateId === comparison.selectedCandidateId);
 
   return (
-    <aside className="hidden w-80 shrink-0 flex-col gap-4 overflow-auto border-l border-border bg-panel p-3 xl:flex">
+    <aside
+      className={cn(
+        display === "desktop"
+          ? "hidden w-80 shrink-0 flex-col gap-4 overflow-auto border-l border-border bg-panel p-3 xl:flex"
+          : "flex h-full w-full flex-col gap-4 overflow-auto bg-panel p-3"
+      )}
+      aria-label="Generate panel"
+    >
       <div>
         <div className="panel-title">Generate</div>
         <div className="mt-2 text-sm font-semibold">Procedural and hybrid layouts</div>

@@ -22,6 +22,7 @@ Latest build output shape:
 - Moved dense analytics UI into the Analyze workflow so it is not always visible.
 - Isolated simulation controls in Simulation workflow, reducing normal Design UI rendering pressure.
 - Reduced always-on right-panel noise by moving broad analytics/validation out of Design properties.
+- Added a smoke E2E script (`npm run test:e2e:smoke`) that checks startup, workflow navigation, and responsive drawers without running the full editor/simulation suite.
 
 ## Remaining Risks
 
@@ -29,6 +30,7 @@ Latest build output shape:
 - Candidate generation can still be CPU-heavy for high candidate counts.
 - Rack bin tables are scrollable but not virtualized.
 - Konva canvas layers are still all mounted in the main canvas. This is fine now, but future simulation growth may need more memoization.
+- The smoke E2E suite is faster than the full suite but still exercises a heavy Konva/Vite page. More speed will require test fixture slimming or mocked layout loading.
 
 ## Recommended Next Steps
 

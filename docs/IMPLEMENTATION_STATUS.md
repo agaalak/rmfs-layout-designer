@@ -5,6 +5,7 @@
 - React, TypeScript, Vite, Tailwind, Zustand, and React Konva application scaffold.
 - Workflow-oriented editor shell with app header, contextual toolbar, workflow rail, grouped Design toolbox, 2D grid canvas, workflow-specific right panels, and status bar.
 - Primary workflows: Design, Generate, Analyze, Simulate Experimental, and Files.
+- Responsive drawer access for Design tools and workflow panels below the desktop side-panel breakpoint.
 - Manual Mode A layout creation from an empty grid.
 - Procedural Mode B generation for external, internal, distributed, hybrid, dense cross-aisle, and true stair-step Flying-V families.
 - Stable Mode B families are traditional external, internal centralized, internal distributed, hybrid external/internal, and dense cross-aisle. True Flying-V is Experimental. The old Flying-V placeholder option is disabled in the UI.
@@ -41,6 +42,7 @@
 - Canonical RMFS domain type definitions for waypoints, storage locations, rack/pod operational state, station resources, orders, and controller boundaries.
 - Graph construction now derives routing waypoints before building road edges.
 - Playwright E2E suite for startup, manual editing, validation, import/export, Mode B, Hybrid, and Experimental Simulation Mode.
+- Fast Playwright smoke suite for startup, workflow navigation, and responsive drawer checks.
 - README explaining RMFS concepts, modes, analytics, validation, import/export, limitations, and roadmap.
 - UI/UX guidelines, UX audit, and performance notes documenting workflow structure and future contributor rules.
 
@@ -56,7 +58,7 @@
 - Loaded-robot reservations currently focus on robot cell conflicts; full carried-rack swept-envelope reservation is still future work.
 - Storage locations are not yet first-class persisted records; they are still inferred from rack home cells and rack-storage cells.
 - Orders/order lines and SKU-based rack selection are documented but not yet part of the main UI workflow.
-- Responsive behavior is improved but not complete; below desktop widths the UI compacts, but true slide-out tablet drawers remain future work.
+- Responsive behavior is improved with drawers, but phone-sized editing is still not a primary target and drawers still need focus-trap/Escape-close hardening.
 
 ## Missing Features
 
@@ -87,19 +89,21 @@
 - UX pass replaced the overloaded toolbar with workflow navigation and contextual toolbars.
 - UX pass reorganized the toolbox, property panels, Analyze workflow, candidate drawer, and Experimental Simulation presentation.
 - UX pass split Vite chunks so the previous large single-bundle warning is gone.
+- Responsive follow-up added drawer panels and `npm run test:e2e:smoke` for faster UI regressions.
 
 ## Test Status
 
 - `npm install`: passed, 0 vulnerabilities.
 - `npm run build`: passed. Manual chunks now avoid the previous large single-bundle warning.
 - `npm test -- --run`: 10 files passed, 52 tests passed.
-- `npm run test:e2e -- --workers=1`: 8 browser tests passed.
+- `npm run test:e2e:smoke -- --workers=1`: 3 browser smoke tests passed.
+- `npm run test:e2e -- --workers=1`: 11 browser tests passed.
 - Browser QA through Playwright at `http://127.0.0.1:5174/`: passed for app load, demo layout, manual editing, Mode B candidate workflow, Hybrid lock preservation, Files import/export, Analyze validation/analytics, and Experimental Simulation one-cycle playback.
 
 ## Completion Plan
 
 1. Keep the current React/Konva/Zustand architecture.
-2. Add true slide-out drawers for tablet widths.
+2. Add focus trap and Escape-close behavior to responsive drawers and dialogs.
 3. Improve candidate previews with thumbnail mini-maps.
 4. Add virtualized bin tables for very large rack configurations.
 5. Deepen the simulator with explicit rack-rotation dwell events, richer charging/battery policies, and better deadlock recovery.

@@ -35,6 +35,8 @@ The main UI is organized by workflow instead of one overloaded toolbar:
 
 The header shows the current layout, workflow, unsaved state, and a primary contextual action. The left workflow rail switches between workflows; the left toolbox appears for Design and is grouped into Navigation, Draw Cells, Place Resources, and Traffic.
 
+On screens below the desktop editing breakpoint, the Design toolbox and workflow side panels open as responsive drawers from the bottom of the screen. The canvas remains visible, and the header warns that larger screens are recommended for serious layout editing.
+
 ## Modes
 
 Mode A, manual, starts with an empty grid. Use the left toolbox to draw roads, rack storage, queues, blocked cells, human zones, and docks, or place racks, stations, chargers, parking, and rotation zones.
@@ -169,6 +171,7 @@ The Vite dev server runs on port `5174` and is reachable at `http://127.0.0.1:51
 ```bash
 npm test
 npm run build
+npm run test:e2e:smoke
 npm run test:e2e
 ```
 
@@ -176,6 +179,7 @@ The current verified pass used:
 
 - `npm run build`
 - `npm test -- --run`
+- `npm run test:e2e:smoke -- --workers=1`
 - `npm run test:e2e -- --workers=1`
 
 ## Controls

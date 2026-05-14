@@ -24,6 +24,8 @@ import { WorkflowRail } from "./WorkflowRail";
 import { useUiStore } from "../../store/uiStore";
 import { useSimulationStore } from "../../store/simulationStore";
 
+type MobileDrawer = "tools" | "panel" | null;
+
 export function AppShell() {
   const layout = useCurrentLayout();
   const [newOpen, setNewOpen] = useState(false);
@@ -32,6 +34,7 @@ export function AppShell() {
   const [importExportOpen, setImportExportOpen] = useState(false);
   const [analyticsSettingsOpen, setAnalyticsSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [mobileDrawer, setMobileDrawer] = useState<MobileDrawer>(null);
   const [statusMessage, setStatusMessage] = useState("Live analytics ready");
   const selectObject = useLayoutStore((state) => state.selectObject);
   const selectCell = useLayoutStore((state) => state.selectCell);
@@ -53,6 +56,9 @@ export function AppShell() {
     const timer = window.setInterval(() => simulationStep(layout, 0.2), 200);
     return () => window.clearInterval(timer);
   }, [appMode, layout, simulationState.isRunning, simulationStep]);
+  useEffect(() => {
+    setMobileDrawer(null);
+  }, [workflow]);
   const selectIssue = (issue: ValidationIssue) => {
     if (issue.objectId) {
       const ref: SelectedObjectRef | undefined =
@@ -144,6 +150,71 @@ export function AppShell() {
         ) : null}
         {workflow === "design" ? (
           <RightPropertiesPanel validation={validation} analytics={analytics} onSelectIssue={selectIssue} />
+        ) : null}
+        <div className="fixed bottom-3 right-3 z-30 flex gap-2 xl:hidden" aria-label="Responsive panel controls">
+          {workflow === "design" ? (
+            <button className="toolbar-button-primary shadow-2xl" onClick={() => setMobileDrawer("tools")} aria-label="Open Design tools">
+              Tools
+            </button>
+          ) : null}
+          <button className="toolbar-button-primary shadow-2xl" onClick={() => setMobileDrawer("panel")} aria-label={`Open ${workflow} panel`}>
+            {workflow === "design" ? "Properties" : workflow === "simulation" ? "Simulation" : workflow[0].toUpperCase() + workflow.slice(1)}
+          </button>
+        </div>
+        {mobileDrawer ? (
+          <div className="fixed inset-0 z-40 bg-slate-950/45 xl:hidden" role="presentation" onClick={() => setMobileDrawer(null)}>
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-label={mobileDrawer === "tools" ? "Design tools drawer" : `${workflow} workflow drawer`}
+              className="absolute bottom-0 left-0 right-0 max-h-[82vh] rounded-t-xl border border-border bg-panel shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-border px-3 py-2">
+                <div>
+                  <div className="text-sm font-semibold">{mobileDrawer === "tools" ? "Design tools" : "Workflow panel"}</div>
+                  <div className="text-xs text-muted-foreground">Drawer view for smaller screens.</div>
+                </div>
+                <button className="icon-button" onClick={() => setMobileDrawer(null)} aria-label="Close responsive drawer" title="Close drawer">
+                  X
+                </button>
+              </div>
+              <div className="h-[calc(82vh-3.5rem)] overflow-hidden">
+                {mobileDrawer === "tools" ? <LeftToolbox display="drawer" /> : null}
+                {mobileDrawer === "panel" && workflow === "design" ? (
+                  <RightPropertiesPanel display="drawer" validation={validation} analytics={analytics} onSelectIssue={selectIssue} />
+                ) : null}
+                {mobileDrawer === "panel" && workflow === "generate" ? (
+                  <GenerateWorkflowPanel
+                    display="drawer"
+                    comparison={candidateComparison}
+                    onGenerateModeB={() => setGenerateOpen(true)}
+                    onGenerateHybrid={() => setHybridOpen(true)}
+                    onApplyCandidate={() => {
+                      applySelectedCandidate();
+                      setMobileDrawer(null);
+                      setStatusMessage("Selected candidate applied and ready for editing");
+                    }}
+                  />
+                ) : null}
+                {mobileDrawer === "panel" && workflow === "analyze" ? (
+                  <AnalyzeWorkflowPanel
+                    display="drawer"
+                    layout={layout}
+                    analytics={analytics}
+                    validation={validation}
+                    onRunValidation={() => setStatusMessage(`Validation ran: ${validation.issues.length} finding${validation.issues.length === 1 ? "" : "s"}`)}
+                    onRunAnalytics={() => setStatusMessage(`Analytics refreshed: score ${analytics.scoring.overallLayoutScore.toFixed(1)}, throughput ${analytics.performance.estimatedSystemThroughput.toFixed(1)} /hr`)}
+                    onSelectIssue={selectIssue}
+                  />
+                ) : null}
+                {mobileDrawer === "panel" && workflow === "files" ? (
+                  <FilesWorkflowPanel display="drawer" layout={layout} analytics={analytics} onOpenDialog={() => setImportExportOpen(true)} onStatus={setStatusMessage} />
+                ) : null}
+                {mobileDrawer === "panel" && workflow === "simulation" ? <SimulationPanel display="drawer" layout={layout} /> : null}
+              </div>
+            </section>
+          </div>
         ) : null}
       </div>
       {workflow === "analyze" ? (

@@ -70,8 +70,10 @@ Color should never be the only state indicator. Pair color with text, badges, ou
 
 - Desktop is the primary editing experience.
 - Below desktop width, keep the workflow rail usable and show the larger-screen warning.
+- Use responsive drawers for the Design toolbox and workflow side panels instead of letting critical controls disappear.
+- Drawer buttons should be short, explicit, and reachable near the lower-right canvas edge.
+- Drawers should close with Escape in future dialog hardening; for now they close through the visible close button or backdrop click.
 - Do not remove essential actions without an alternative access path.
-- Future work should convert side panels to drawers below 1024 px.
 
 ## Workflow Principles
 

@@ -5,6 +5,7 @@ import type { SimulationConfig, SimulationEventSeverity, TaskGenerationMode } fr
 import { downloadTextFile } from "../../importExport/exportLayout";
 import { exportSimulationConfigJson, exportSimulationEventLogCsv, exportSimulationMetricsCsv, importSimulationConfigJson } from "../../importExport/exportSimulation";
 import { useSimulationStore } from "../../store/simulationStore";
+import { cn } from "../../utils/cn";
 
 function number(event: ChangeEvent<HTMLInputElement>) {
   return Number(event.target.value);
@@ -19,7 +20,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-export function SimulationPanel({ layout }: { layout: WarehouseLayout }) {
+export function SimulationPanel({ layout, display = "desktop" }: { layout: WarehouseLayout; display?: "desktop" | "drawer" }) {
   const {
     config,
     state,
@@ -64,7 +65,14 @@ export function SimulationPanel({ layout }: { layout: WarehouseLayout }) {
     .slice(-120);
 
   return (
-    <aside className="hidden w-96 shrink-0 flex-col gap-4 overflow-auto border-l border-border bg-panel p-3 xl:flex">
+    <aside
+      className={cn(
+        display === "desktop"
+          ? "hidden w-96 shrink-0 flex-col gap-4 overflow-auto border-l border-border bg-panel p-3 xl:flex"
+          : "flex h-full w-full flex-col gap-4 overflow-auto bg-panel p-3"
+      )}
+      aria-label="Simulation panel"
+    >
       <div>
         <div className="flex items-center gap-2">
           <div className="panel-title">Simulation</div>

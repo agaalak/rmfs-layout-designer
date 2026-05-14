@@ -6,15 +6,17 @@ import { downloadTextFile, exportLayoutJson } from "../../importExport/exportLay
 import { importLayoutJson } from "../../importExport/importLayout";
 import type { WarehouseLayout } from "../../models/layout";
 import { useLayoutStore } from "../../store/layoutStore";
+import { cn } from "../../utils/cn";
 
 interface FilesWorkflowPanelProps {
   layout: WarehouseLayout;
   analytics: AnalyticsResult;
   onOpenDialog: () => void;
   onStatus: (message: string) => void;
+  display?: "desktop" | "drawer";
 }
 
-export function FilesWorkflowPanel({ layout, analytics, onOpenDialog, onStatus }: FilesWorkflowPanelProps) {
+export function FilesWorkflowPanel({ layout, analytics, onOpenDialog, onStatus, display = "desktop" }: FilesWorkflowPanelProps) {
   const setLayout = useLayoutStore((state) => state.setLayout);
   const dirty = useLayoutStore((state) => state.history.past.length > 0);
 
@@ -29,7 +31,14 @@ export function FilesWorkflowPanel({ layout, analytics, onOpenDialog, onStatus }
   };
 
   return (
-    <aside className="hidden w-80 shrink-0 flex-col gap-4 overflow-auto border-l border-border bg-panel p-3 xl:flex">
+    <aside
+      className={cn(
+        display === "desktop"
+          ? "hidden w-80 shrink-0 flex-col gap-4 overflow-auto border-l border-border bg-panel p-3 xl:flex"
+          : "flex h-full w-full flex-col gap-4 overflow-auto bg-panel p-3"
+      )}
+      aria-label="Files panel"
+    >
       <div>
         <div className="panel-title">Files</div>
         <div className="mt-2 text-sm font-semibold">Import, export, and reports</div>
