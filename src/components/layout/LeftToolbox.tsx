@@ -32,14 +32,14 @@ const toolMeta: Record<EditorTool, { label: string; ariaLabel: string; icon: typ
   station: { label: "Station", ariaLabel: "Add station", icon: SplitSquareVertical, hint: "Place pick, replenish, or service stations." },
   charger: { label: "Charging spot", ariaLabel: "Add charging spot", icon: BatteryCharging, hint: "Place a 1- or 2-cell charger." },
   parking: { label: "Parking spot", ariaLabel: "Add parking spot", icon: ParkingSquare, hint: "Place a one-cell robot parking location." },
-  rotation: { label: "Rotation zone", ariaLabel: "Add rotation zone", icon: RotateCw, hint: "Place a rack orientation-change zone." },
-  traffic: { label: "Direction tool", ariaLabel: "Traffic direction tool", icon: TrafficCone, hint: "Select a traversable cell, then configure allowed directions in Properties." }
+  rotation: { label: "Rotation cell", ariaLabel: "Enable rotation on cell", icon: RotateCw, hint: "Legacy shortcut: marks a road cell as rotation-enabled. Prefer the Direction tool." },
+  traffic: { label: "Direction tool", ariaLabel: "Traffic direction tool", icon: TrafficCone, hint: "Select a traversable cell, then configure movement directions and rotation permissions in Properties." }
 };
 
 const groups: Array<{ title: string; tools: EditorTool[] }> = [
   { title: "Navigation", tools: ["select", "pan"] },
   { title: "Draw Cells", tools: ["road", "rack-storage", "queue", "blocked", "human-zone", "dock", "eraser"] },
-  { title: "Place Resources", tools: ["rack", "station", "charger", "parking", "rotation"] },
+  { title: "Place Resources", tools: ["rack", "station", "charger", "parking"] },
   { title: "Traffic", tools: ["traffic"] }
 ];
 

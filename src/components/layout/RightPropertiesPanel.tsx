@@ -3,7 +3,6 @@ import type { Bin, CardinalOrientation, DemandClass, Rack, RackFaceId } from "..
 import type { ServiceSide, Station, StationType } from "../../models/station";
 import type { ChargingSpot } from "../../models/charging";
 import type { ParkingSpot, ParkingType } from "../../models/parking";
-import type { RotationZone } from "../../models/rotation";
 import type { CellType, Direction, GridCell, GridConfig, LayoutCell, LayoutMode } from "../../models/grid";
 import { allDirections, traversableCellTypes } from "../../models/grid";
 import { makeRackBins } from "../../generators/proceduralGenerator";
@@ -211,9 +210,6 @@ export function RightPropertiesPanel({ validation, analytics, onSelectIssue, dis
       {first?.kind === "parking" && object ? (
         <ParkingProperties parking={object as ParkingSpot} updateParking={updateParking} move={(row, col) => moveObject(first, { row, col })} toggleLock={toggleSelectedLock} />
       ) : null}
-      {first?.kind === "rotation" && object ? (
-        <RotationProperties zone={object as RotationZone} updateRotation={updateRotation} toggleLock={toggleSelectedLock} />
-      ) : null}
       {(first || selectedCell) ? <ObjectValidationIssues issues={relatedIssues} onSelectIssue={onSelectIssue} /> : null}
     </aside>
   );
@@ -234,7 +230,7 @@ function TrafficCellProperties({
 }) {
   const directions = layoutCell?.allowedDirections ?? allDirections;
   const isTraversable = layoutCell ? traversableCellTypes.has(layoutCell.cellType) : true;
-  const cellTypes: CellType[] = ["EMPTY", "ROAD", "RACK_STORAGE", "QUEUE", "BLOCKED", "HUMAN_ZONE", "DOCK", "ROTATION", "CHARGING", "PARKING", "STATION"];
+  const cellTypes: CellType[] = ["EMPTY", "ROAD", "RACK_STORAGE", "QUEUE", "BLOCKED", "HUMAN_ZONE", "DOCK", "CHARGING", "PARKING", "STATION"];
   const setDirections = (next: Direction[]) => {
     setCellDirections(cell, next);
   };
@@ -297,6 +293,53 @@ function TrafficCellProperties({
         <button className="toolbar-button justify-center" type="button" onClick={() => setDirections(["east", "west"])}>
           East/West
         </button>
+      </div>
+      <div className="rounded-md border border-border bg-white p-2">
+        <label className="mb-2 flex items-center gap-2 text-xs font-semibold">
+          <input
+            type="checkbox"
+            checked={Boolean(layoutCell?.allowRotation)}
+            onChange={(event) =>
+              updateCell(cell, {
+                cellType: layoutCell?.cellType && layoutCell.cellType !== "EMPTY" ? layoutCell.cellType : "ROAD",
+                allowRotation: event.target.checked,
+                supportedRotationOrientationsDeg: event.target.checked ? layoutCell?.supportedRotationOrientationsDeg ?? [0, 90, 180, 270] : undefined,
+                rotationTimeSec: event.target.checked ? layoutCell?.rotationTimeSec ?? 6 : undefined,
+                rotationCapacity: event.target.checked ? layoutCell?.rotationCapacity ?? 1 : undefined
+              })
+            }
+          />
+          Allow rack rotation on this cell
+        </label>
+        {layoutCell?.allowRotation ? (
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Rotation time sec">
+              <input className="field-input" type="number" value={layoutCell.rotationTimeSec ?? 6} onChange={(event) => updateCell(cell, { rotationTimeSec: number(event) })} />
+            </Field>
+            <Field label="Rotation capacity">
+              <input className="field-input" type="number" value={layoutCell.rotationCapacity ?? 1} onChange={(event) => updateCell(cell, { rotationCapacity: Math.max(1, number(event)) })} />
+            </Field>
+            {[0, 90, 180, 270].map((orientation) => {
+              const supported = layoutCell.supportedRotationOrientationsDeg ?? [0, 90, 180, 270];
+              return (
+                <label key={orientation} className="flex items-center gap-2 rounded-md border border-border px-2 py-1 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={supported.includes(orientation as 0 | 90 | 180 | 270)}
+                    onChange={() =>
+                      updateCell(cell, {
+                        supportedRotationOrientationsDeg: supported.includes(orientation as 0 | 90 | 180 | 270)
+                          ? supported.filter((item) => item !== orientation)
+                          : [...supported, orientation as 0 | 90 | 180 | 270]
+                      })
+                    }
+                  />
+                  {orientation} deg
+                </label>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
     </section>
   );
@@ -527,19 +570,6 @@ function StationProperties({
   move: (row: number, col: number) => void;
   toggleLock: () => void;
 }) {
-  const queueCells = (length: number, side = station.serviceSide) => {
-    const delta: Record<ServiceSide, [number, number]> = {
-      NORTH: [1, 0],
-      SOUTH: [-1, 0],
-      EAST: [0, -1],
-      WEST: [0, 1]
-    };
-    const [dr, dc] = delta[side];
-    return Array.from({ length }, (_, index) => ({
-      row: station.cell.row + dr * (index + 1),
-      col: station.cell.col + dc * (index + 1)
-    }));
-  };
   return (
     <section className="flex flex-col gap-2">
       <PropertyTabStrip tabs={["General", "Service", "Queue", "Orientation", "Validation"]} />
@@ -572,8 +602,7 @@ function StationProperties({
               const serviceSide = event.target.value as ServiceSide;
               updateStation(station.id, {
                 serviceSide,
-                requiredRackOrientationDeg: { NORTH: 0, EAST: 90, SOUTH: 180, WEST: 270 }[serviceSide] as CardinalOrientation,
-                queueCells: queueCells(station.maxQueueLength, serviceSide)
+                requiredRackOrientationDeg: { NORTH: 0, EAST: 90, SOUTH: 180, WEST: 270 }[serviceSide] as CardinalOrientation
               });
             }}
           >
@@ -592,17 +621,12 @@ function StationProperties({
         <Field label="Service time sec">
           <input className="field-input" type="number" value={station.targetServiceTimeSec} onChange={(event) => updateStation(station.id, { targetServiceTimeSec: number(event) })} />
         </Field>
-        <Field label="Queue length">
-          <input
-            className="field-input"
-            type="number"
-            value={station.maxQueueLength}
-            onChange={(event) => {
-              const maxQueueLength = Math.max(0, number(event));
-              updateStation(station.id, { maxQueueLength, queueCells: queueCells(maxQueueLength) });
-            }}
-          />
+        <Field label="Station capacity">
+          <input className="field-input" type="number" value={station.capacity} onChange={(event) => updateStation(station.id, { capacity: Math.max(1, number(event)) })} />
         </Field>
+        <div className="rounded-md border border-border bg-slate-50 p-2 text-xs text-muted-foreground">
+          Linked queue lanes: {station.queueLaneIds.length}. Queue cells are independent directional cells, not station cells.
+        </div>
       </div>
       <Field label="Accepted faces">
         <select className="field-input" value={station.acceptedRackFaces.join("/")} onChange={(event) => updateStation(station.id, { acceptedRackFaces: event.target.value === "A/B" ? ["A", "B"] : [event.target.value as "A" | "B"] })}>
@@ -713,61 +737,6 @@ function ParkingProperties({
       <div className="rounded-md border border-border bg-slate-50 p-2 text-xs text-muted-foreground">
         Parking spots occupy exactly 1 grid cell.
       </div>
-    </section>
-  );
-}
-
-function RotationProperties({
-  zone,
-  updateRotation,
-  toggleLock
-}: {
-  zone: RotationZone;
-  updateRotation: (id: string, patch: Partial<RotationZone>) => void;
-  toggleLock: () => void;
-}) {
-  const first = zone.cells[0];
-  return (
-    <section className="flex flex-col gap-2">
-      <PropertyTabStrip tabs={["General", "Supported Orientations", "Validation"]} />
-      <label className="flex items-center gap-2 rounded-md border border-border bg-white px-2 py-2 text-xs">
-        <input type="checkbox" checked={Boolean(zone.locked)} onChange={toggleLock} />
-        Locked hybrid constraint
-      </label>
-      <Field label="Rotation zone ID">
-        <input className="field-input" value={zone.rotationZoneId} onChange={(event) => updateRotation(zone.id, { rotationZoneId: event.target.value })} />
-      </Field>
-      <div className="grid grid-cols-2 gap-2">
-        <Field label="Rotation time sec">
-          <input className="field-input" type="number" value={zone.rotationTimeSec} onChange={(event) => updateRotation(zone.id, { rotationTimeSec: number(event) })} />
-        </Field>
-        <Field label="Safety clearance">
-          <input className="field-input" type="number" value={zone.safetyClearanceCells} onChange={(event) => updateRotation(zone.id, { safetyClearanceCells: number(event) })} />
-        </Field>
-        <Field label="Row">
-          <input className="field-input" type="number" value={first.row} onChange={(event) => updateRotation(zone.id, { cells: [{ row: number(event), col: first.col }] })} />
-        </Field>
-        <Field label="Col">
-          <input className="field-input" type="number" value={first.col} onChange={(event) => updateRotation(zone.id, { cells: [{ row: first.row, col: number(event) }] })} />
-        </Field>
-      </div>
-      <Field label="Allowed rack types">
-        <input className="field-input" value={zone.allowedRackTypes.join(",")} onChange={(event) => updateRotation(zone.id, { allowedRackTypes: event.target.value.split(",").map((value) => value.trim()).filter(Boolean) })} />
-      </Field>
-      <Field label="Supported orientations">
-        <input
-          className="field-input"
-          value={zone.supportedOrientationsDeg.join(",")}
-          onChange={(event) =>
-            updateRotation(zone.id, {
-              supportedOrientationsDeg: event.target.value
-                .split(",")
-                .map((value) => Number(value.trim()))
-                .filter((value): value is CardinalOrientation => [0, 90, 180, 270].includes(value))
-            })
-          }
-        />
-      </Field>
     </section>
   );
 }

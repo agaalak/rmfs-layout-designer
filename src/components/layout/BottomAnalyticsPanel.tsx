@@ -27,7 +27,7 @@ export function BottomAnalyticsPanel({ analytics, validation }: BottomAnalyticsP
     ["Max dist", `${fmt(analytics.distance.maxRackToStationDistance)} m`],
     ["Charger dist", `${fmt(analytics.distance.averageStationToChargerDistance)} m`],
     ["Parking dist", `${fmt(analytics.distance.averageStationToParkingDistance)} m`],
-    ["Rotation dist", `${fmt(analytics.distance.averageRackToRotationZoneDistance)} m`],
+    ["Rotation-cell dist", `${fmt(analytics.distance.averageRackToRotationZoneDistance)} m`],
     ["Pre rotate", `${fmt(analytics.orientation.percentPreStationRotation)}%`],
     ["Post rotate", `${fmt(analytics.orientation.percentPostStationRotation)}%`],
     ["Rotate detour", `${fmt(analytics.orientation.averageRotationDetourDistance)} m`],

@@ -19,13 +19,12 @@ export interface RoadGraph {
   adjacency: Map<GraphNode, GraphEdge[]>;
 }
 
-const terminalRoutingCellTypes = new Set(["PARKING", "CHARGING"]);
+const terminalRoutingCellTypes = new Set(["PARKING", "CHARGING", "STATION"]);
 
 function waypointTypeForCell(cellType: string): WaypointType {
   if (cellType === "QUEUE") return "queue";
   if (cellType === "CHARGING") return "charger_approach";
   if (cellType === "PARKING") return "parking";
-  if (cellType === "ROTATION") return "rotation";
   if (cellType === "STATION") return "station_approach";
   return "road";
 }
@@ -142,8 +141,8 @@ export function rackApproachNodes(layout: WarehouseLayout, rack: Rack, graph: Ro
   return [...result];
 }
 
-export function stationNodes(station: { cell: GridCell; queueCells: GridCell[] }, graph?: RoadGraph): GraphNode[] {
-  const nodes = [station.cell, ...station.queueCells].map(cellKey);
+export function stationNodes(station: { cell: GridCell }, graph?: RoadGraph): GraphNode[] {
+  const nodes = [station.cell].map(cellKey);
   return graph ? nodes.filter((node) => graph.nodes.has(node)) : nodes;
 }
 
@@ -152,8 +151,8 @@ export function chargerNodes(charger: { cells: GridCell[] }, graph?: RoadGraph):
   return graph ? nodes.filter((node) => graph.nodes.has(node)) : nodes;
 }
 
-export function rotationNodes(zone: { cells: GridCell[] }, graph?: RoadGraph): GraphNode[] {
-  const nodes = zone.cells.map(cellKey);
+export function rotationCellNodes(layout: WarehouseLayout, graph?: RoadGraph): GraphNode[] {
+  const nodes = layout.cells.filter((cell) => cell.allowRotation).map(cellKey);
   return graph ? nodes.filter((node) => graph.nodes.has(node)) : nodes;
 }
 

@@ -154,4 +154,16 @@ npx playwright show-trace test-results/<failed-test>/trace.zip
 ```
 
 The trace is often the fastest way to confirm whether a button was missing, covered by a panel, disabled, or throwing a console error.
+# Semantic Debugging Addendum - 2026-05-14
+
+When debugging queue/station/pod/rotation issues, inspect:
+
+- `layout.queueLanes` for ordered queue cells and `directionToNext`
+- `station.queueLaneIds` for linked queues
+- `station.cell` for the actual service cell
+- `storageLocation.podServiceCell` for pickup/drop target
+- `layout.cells.filter(cell => cell.allowRotation)` for rotation-enabled cells
+- simulation events around `reached rack pickup`, `arrived at station service cell`, `rotated`, and `entered destination pod service cell`
+
+Diagnostics exports now include the migrated layout model, so issue reports can show whether a failure happened on a queue cell, station cell, pod service cell, or rotation-enabled cell.
 

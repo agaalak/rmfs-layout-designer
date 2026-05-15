@@ -95,3 +95,14 @@ Color should never be the only state indicator. Pair color with text, badges, ou
 - Keep experimental workflows visibly labeled.
 - Avoid placeholder buttons in main workflows. If a feature is not ready, hide or disable it with a clear explanation.
 - Analytics should help the user decide what to fix next, not just dump numbers.
+# 2026-05-14 Direction Tool Semantics
+
+Rotation is no longer presented as a placed resource. The Design toolbox should keep rotation configuration under Traffic/Direction properties:
+
+- select Direction tool
+- click a traversable cell
+- set movement directions
+- enable or disable rack rotation
+- choose supported orientations, dwell time, and capacity
+
+Do not reintroduce a visible "Add rotation zone" workflow unless the model changes again.

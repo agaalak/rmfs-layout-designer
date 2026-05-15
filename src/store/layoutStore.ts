@@ -4,8 +4,8 @@ import { allDirections } from "../models/grid";
 import type { ChargingSpot } from "../models/charging";
 import type { GenerationParams, LayoutCandidateSummary, SelectedObjectRef, WarehouseLayout } from "../models/layout";
 import type { ParkingSpot } from "../models/parking";
+import type { QueueLane } from "../models/queue";
 import type { Rack } from "../models/rack";
-import type { RotationZone } from "../models/rotation";
 import type { ServiceSide, Station } from "../models/station";
 import { serviceSideOrientation } from "../models/station";
 import {
@@ -28,6 +28,8 @@ import { makeId, nextSequentialId } from "../utils/ids";
 import { rackOccupiedCells } from "../utils/rackFootprint";
 import { regenerateRackBins as regenerateRackBinsForRack } from "../utils/rackBins";
 import { ensureStorageLocations } from "../utils/storageLocations";
+import { normalizeLayoutSemantics } from "../utils/layoutSemantics";
+import { makeQueueLaneFromCells, stationQueueCells } from "../utils/queueLanes";
 import { pushHistory, redoHistory, undoHistory, type HistoryState } from "./historyStore";
 
 function cloneLayout(layout: WarehouseLayout): WarehouseLayout {
@@ -43,13 +45,12 @@ function objectCells(layout: WarehouseLayout, objectId?: string): GridCell[] {
   const rack = layout.racks.find((item) => item.id === objectId);
   if (rack) return rackOccupiedCells(rack, layout.grid);
   const station = layout.stations.find((item) => item.id === objectId);
-  if (station) return [station.cell, ...station.queueCells];
+  if (station) return [station.cell, ...stationQueueCells(layout, station)];
   const charger = layout.chargingSpots.find((item) => item.id === objectId);
   if (charger) return charger.cells;
   const parking = layout.parkingSpots.find((item) => item.id === objectId);
   if (parking) return [parking.cell];
-  const zone = layout.rotationZones.find((item) => item.id === objectId);
-  return zone?.cells ?? [];
+  return [];
 }
 
 export interface CandidateComparisonState {
@@ -72,10 +73,9 @@ function lockedObjectAtCell(layout: WarehouseLayout, cell: GridCell) {
   const key = cellKey(cell);
   return (
     layout.racks.some((rack) => rack.locked && rackOccupiedCells(rack, layout.grid).some((item) => cellKey(item) === key)) ||
-    layout.stations.some((station) => station.locked && [station.cell, ...station.queueCells].some((item) => cellKey(item) === key)) ||
+    layout.stations.some((station) => station.locked && [station.cell, ...stationQueueCells(layout, station)].some((item) => cellKey(item) === key)) ||
     layout.chargingSpots.some((charger) => charger.locked && charger.cells.some((item) => cellKey(item) === key)) ||
-    layout.parkingSpots.some((parking) => parking.locked && cellKey(parking.cell) === key) ||
-    layout.rotationZones.some((zone) => zone.locked && zone.cells.some((item) => cellKey(item) === key))
+    layout.parkingSpots.some((parking) => parking.locked && cellKey(parking.cell) === key)
   );
 }
 
@@ -94,7 +94,12 @@ function upsertCell(layout: WarehouseLayout, cell: GridCell, cellType: CellType)
       cellType,
       allowedDirections: existing?.allowedDirections ?? allDirections,
       zoneId: existing?.zoneId,
-      locked: existing?.locked
+    locked: existing?.locked,
+    allowRotation: existing?.allowRotation,
+    supportedRotationOrientationsDeg: existing?.supportedRotationOrientationsDeg,
+    rotationTimeSec: existing?.rotationTimeSec,
+    rotationCapacity: existing?.rotationCapacity,
+    allowedRotationRackTypes: existing?.allowedRotationRackTypes
     });
   }
   return { ...layout, cells: [...map.values()] };
@@ -122,28 +127,24 @@ function removeObjectsAtCell(layout: WarehouseLayout, cell: GridCell): Warehouse
   const stationsToRemove = layout.stations.filter((station) => !station.locked && cellKey(station.cell) === key);
   const chargersToRemove = layout.chargingSpots.filter((charger) => !charger.locked && charger.cells.some((item) => cellKey(item) === key));
   const parkingToRemove = layout.parkingSpots.filter((parking) => !parking.locked && cellKey(parking.cell) === key);
-  const zonesToRemove = layout.rotationZones.filter((zone) => !zone.locked && zone.cells.some((item) => cellKey(item) === key));
   let next = {
     ...layout,
     racks: layout.racks.filter((rack) => !racksToRemove.some((item) => item.id === rack.id)),
     stations: layout.stations.filter((station) => !stationsToRemove.some((item) => item.id === station.id)),
     chargingSpots: layout.chargingSpots.filter((charger) => !chargersToRemove.some((item) => item.id === charger.id)),
     parkingSpots: layout.parkingSpots.filter((parking) => !parkingToRemove.some((item) => item.id === parking.id)),
-    rotationZones: layout.rotationZones.filter((zone) => !zonesToRemove.some((item) => item.id === zone.id))
+    queueLanes: layout.queueLanes.filter((lane) => !stationsToRemove.some((station) => lane.stationId === station.id))
   };
   racksToRemove.flatMap((rack) => rackOccupiedCells(rack, layout.grid)).forEach((item) => {
     next = upsertCell(next, item, "EMPTY");
   });
-  stationsToRemove.flatMap((station) => [station.cell, ...station.queueCells]).forEach((item) => {
+  stationsToRemove.flatMap((station) => [station.cell, ...stationQueueCells(layout, station)]).forEach((item) => {
     next = upsertCell(next, item, "EMPTY");
   });
   chargersToRemove.flatMap((charger) => charger.cells).forEach((item) => {
     next = upsertCell(next, item, "EMPTY");
   });
   parkingToRemove.map((parking) => parking.cell).forEach((item) => {
-    next = upsertCell(next, item, "EMPTY");
-  });
-  zonesToRemove.flatMap((zone) => zone.cells).forEach((item) => {
     next = upsertCell(next, item, "EMPTY");
   });
   return next;
@@ -192,9 +193,9 @@ function makeDefaultStation(index: number, cell: GridCell): Station {
     serviceSide: side,
     acceptedRackFaces: ["A", "B"],
     requiredRackOrientationDeg: serviceSideOrientation[side],
-    queueCells: [{ row: Math.max(0, cell.row - 1), col: cell.col }],
     targetServiceTimeSec: 30,
-    maxQueueLength: 1
+    capacity: 1,
+    queueLaneIds: []
   };
 }
 
@@ -238,7 +239,7 @@ interface LayoutState {
   updateStation: (id: string, patch: Partial<Station>) => void;
   updateCharger: (id: string, patch: Partial<ChargingSpot>) => void;
   updateParking: (id: string, patch: Partial<ParkingSpot>) => void;
-  updateRotation: (id: string, patch: Partial<RotationZone>) => void;
+  updateRotation: (id: string, patch: Record<string, unknown>) => void;
   regenerateRackBins: (id: string) => void;
   updateLayoutMeta: (patch: Partial<WarehouseLayout>) => void;
   updateCell: (cell: GridCell, patch: Partial<LayoutCell>) => void;
@@ -287,7 +288,7 @@ function withoutSampleInventory(layout: WarehouseLayout): WarehouseLayout {
 const initialLayout = generateSmallDemoLayout();
 
 function commit(history: HistoryState<WarehouseLayout>, layout: WarehouseLayout) {
-  return pushHistory(history, ensureStorageLocations(cloneLayout(layout)));
+  return pushHistory(history, ensureStorageLocations(normalizeLayoutSemantics(cloneLayout(layout))));
 }
 
 export const useLayoutStore = create<LayoutState>((set, get) => ({
@@ -464,9 +465,12 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       if (lockedObjectAtCell(state.history.present, cell)) return {};
       const layout = upsertCell(removeObjectsAtCell(state.history.present, cell), cell, "STATION");
       const station = makeDefaultStation(layout.stations.length, cell);
-      let next = { ...layout, stations: [...layout.stations, station] };
-      station.queueCells.forEach((queue) => {
-        next = upsertCell(next, queue, "QUEUE");
+      const queueCells = [{ row: Math.max(0, cell.row - 1), col: cell.col }];
+      const lane = makeQueueLaneFromCells(`queue_${station.id}_001`, station.id, queueCells, cell);
+      const stationWithQueue = lane ? { ...station, queueLaneIds: [lane.queueLaneId] } : station;
+      let next = { ...layout, stations: [...layout.stations, stationWithQueue], queueLanes: lane ? [...layout.queueLanes, lane] : layout.queueLanes };
+      lane?.cells.forEach((queue) => {
+        next = upsertCell(next, queue.cell, "QUEUE");
       });
       return { history: commit(state.history, next), selected: [{ kind: "station", id: station.id }], selectedCell: undefined };
     }),
@@ -502,17 +506,19 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   addRotation: (cell) =>
     set((state) => {
       if (lockedObjectAtCell(state.history.present, cell)) return {};
-      const layout = upsertCell(removeObjectsAtCell(state.history.present, cell), cell, "ROTATION");
-      const rotation: RotationZone = {
-        id: makeId("rotation"),
-        rotationZoneId: nextSequentialId("rotation", layout.rotationZones.length),
-        cells: [cell],
-        allowedRackTypes: ["two_face_mobile_rack"],
-        supportedOrientationsDeg: [0, 90, 180, 270],
-        rotationTimeSec: 6,
-        safetyClearanceCells: 1
+      const layout = upsertCell(removeObjectsAtCell(state.history.present, cell), cell, "ROAD");
+      return {
+        history: commit(state.history, {
+          ...layout,
+          cells: layout.cells.map((item) =>
+            cellKey(item) === cellKey(cell)
+              ? { ...item, allowRotation: true, supportedRotationOrientationsDeg: [0, 90, 180, 270], rotationTimeSec: 6, rotationCapacity: 1 }
+              : item
+          )
+        }),
+        selected: [],
+        selectedCell: cell
       };
-      return { history: commit(state.history, { ...layout, rotationZones: [...layout.rotationZones, rotation] }), selected: [{ kind: "rotation", id: rotation.id }], selectedCell: undefined };
     }),
   moveObject: (ref, cell) =>
     set((state) => {
@@ -553,12 +559,6 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
         if (parking) layout = upsertCell(upsertCell(layout, parking.cell, "EMPTY"), cell, "PARKING");
         layout = { ...layout, parkingSpots: layout.parkingSpots.map((item) => (item.id === ref.id ? { ...item, cell } : item)) };
       }
-      if (ref.kind === "rotation") {
-        const zone = layout.rotationZones.find((item) => item.id === ref.id);
-        if (zone?.locked) return {};
-        if (zone) layout = upsertCell(upsertCell(layout, zone.cells[0], "EMPTY"), cell, "ROTATION");
-        layout = { ...layout, rotationZones: layout.rotationZones.map((item) => (item.id === ref.id ? { ...item, cells: [cell] } : item)) };
-      }
       return { history: commit(state.history, layout) };
     }),
   deleteSelected: () =>
@@ -576,11 +576,11 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
           if (station?.locked) continue;
           if (station) {
             layout = upsertCell(layout, station.cell, "EMPTY");
-            station.queueCells.forEach((cell) => {
+            stationQueueCells(layout, station).forEach((cell) => {
               layout = upsertCell(layout, cell, "EMPTY");
             });
           }
-          layout = { ...layout, stations: layout.stations.filter((item) => item.id !== ref.id) };
+          layout = { ...layout, stations: layout.stations.filter((item) => item.id !== ref.id), queueLanes: layout.queueLanes.filter((lane) => lane.stationId !== ref.id) };
         }
         if (ref.kind === "charger") {
           const charger = layout.chargingSpots.find((item) => item.id === ref.id);
@@ -595,14 +595,6 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
           if (parking?.locked) continue;
           if (parking) layout = upsertCell(layout, parking.cell, "EMPTY");
           layout = { ...layout, parkingSpots: layout.parkingSpots.filter((item) => item.id !== ref.id) };
-        }
-        if (ref.kind === "rotation") {
-          const zone = layout.rotationZones.find((item) => item.id === ref.id);
-          if (zone?.locked) continue;
-          zone?.cells.forEach((cell) => {
-            layout = upsertCell(layout, cell, "EMPTY");
-          });
-          layout = { ...layout, rotationZones: layout.rotationZones.filter((item) => item.id !== ref.id) };
         }
       }
       return { history: commit(state.history, layout), selected: [], selectedCell: undefined };
@@ -681,14 +673,6 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     set((state) => {
       let layout = state.history.present;
       const previous = layout.stations.find((station) => station.id === id);
-      if (previous && patch.queueCells) {
-        previous.queueCells.forEach((cell) => {
-          layout = upsertCell(layout, cell, "EMPTY");
-        });
-        patch.queueCells.forEach((cell) => {
-          layout = upsertCell(layout, cell, "QUEUE");
-        });
-      }
       if (previous && patch.cell) {
         layout = upsertCell(upsertCell(layout, previous.cell, "EMPTY"), patch.cell, "STATION");
       }
@@ -720,24 +704,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     }),
   updateParking: (id, patch) => set((state) => ({ history: commit(state.history, { ...state.history.present, parkingSpots: state.history.present.parkingSpots.map((parking) => (parking.id === id ? { ...parking, ...patch } : parking)) }) })),
   updateRotation: (id, patch) =>
-    set((state) => {
-      let layout = state.history.present;
-      const previous = layout.rotationZones.find((zone) => zone.id === id);
-      if (previous && patch.cells) {
-        previous.cells.forEach((cell) => {
-          layout = upsertCell(layout, cell, "EMPTY");
-        });
-        patch.cells.forEach((cell) => {
-          layout = upsertCell(layout, cell, "ROTATION");
-        });
-      }
-      return {
-        history: commit(state.history, {
-          ...layout,
-          rotationZones: layout.rotationZones.map((zone) => (zone.id === id ? { ...zone, ...patch } : zone))
-        })
-      };
-    }),
+    set((state) => ({ history: commit(state.history, state.history.present), selectedCell: state.selectedCell })),
   regenerateRackBins: (id) =>
     set((state) => ({
       history: commit(state.history, {
@@ -784,7 +751,12 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
         cellType: existing?.cellType ?? "ROAD",
         allowedDirections: directions,
         zoneId: existing?.zoneId,
-        locked: existing?.locked
+        locked: existing?.locked,
+        allowRotation: existing?.allowRotation,
+        supportedRotationOrientationsDeg: existing?.supportedRotationOrientationsDeg,
+        rotationTimeSec: existing?.rotationTimeSec,
+        rotationCapacity: existing?.rotationCapacity,
+        allowedRotationRackTypes: existing?.allowedRotationRackTypes
       });
       return {
         history: commit(state.history, { ...state.history.present, cells: [...map.values()] }),
@@ -800,7 +772,6 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       if (first?.kind === "station") layout = { ...layout, stations: layout.stations.map((station) => (station.id === first.id ? { ...station, locked: !station.locked } : station)) };
       if (first?.kind === "charger") layout = { ...layout, chargingSpots: layout.chargingSpots.map((charger) => (charger.id === first.id ? { ...charger, locked: !charger.locked } : charger)) };
       if (first?.kind === "parking") layout = { ...layout, parkingSpots: layout.parkingSpots.map((parking) => (parking.id === first.id ? { ...parking, locked: !parking.locked } : parking)) };
-      if (first?.kind === "rotation") layout = { ...layout, rotationZones: layout.rotationZones.map((zone) => (zone.id === first.id ? { ...zone, locked: !zone.locked } : zone)) };
       if (selectedCell && !first) {
         const key = cellKey(selectedCell);
         const map = cellMap(layout);
@@ -830,5 +801,5 @@ export function selectedObject(layout: WarehouseLayout, selected: SelectedObject
   if (first.kind === "station") return layout.stations.find((item) => item.id === first.id);
   if (first.kind === "charger") return layout.chargingSpots.find((item) => item.id === first.id);
   if (first.kind === "parking") return layout.parkingSpots.find((item) => item.id === first.id);
-  return layout.rotationZones.find((item) => item.id === first.id);
+  return undefined;
 }

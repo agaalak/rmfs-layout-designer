@@ -71,7 +71,9 @@ export function detectRobotRobotOverlaps(layout: WarehouseLayout, state: Simulat
 export function detectRobotRackOverlaps(layout: WarehouseLayout, state: SimulationState): RuntimeCollisionIssue[] {
   return state.robots.flatMap((robot) => {
     const envelope = getRobotRuntimeEnvelope(layout, state, robot);
-    return envelopeOverlapsStaticRacks(layout, state, envelope, robot.carryingRackId).map((overlap) => ({
+    const assignedTask = state.tasks.find((task) => task.taskId === robot.assignedTaskId);
+    const pickupRackId = robot.routePhase === "TO_RACK" ? assignedTask?.rackId : undefined;
+    return envelopeOverlapsStaticRacks(layout, state, envelope, robot.carryingRackId ?? pickupRackId).map((overlap) => ({
       type: "static_rack" as const,
       robotId: robot.robotId,
       rackId: overlap.rackId,

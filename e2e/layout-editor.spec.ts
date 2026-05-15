@@ -23,7 +23,7 @@ async function appState(page: Page) {
       stations: layout.stations.length,
       chargers: layout.chargingSpots.length,
       parking: layout.parkingSpots.length,
-      rotations: layout.rotationZones.length,
+      rotations: layout.cells.filter((cell) => cell.allowRotation).length,
       selectedKind: layoutState.selected[0]?.kind,
       selectedId: layoutState.selected[0]?.id,
       selectedCell: layoutState.selectedCell,
@@ -119,8 +119,9 @@ test("creates a manual layout and places core RMFS objects from toolbox clicks",
   await page.getByRole("button", { name: "Add parking spot" }).click();
   await clickCanvas(page, 0.54, 0.32);
 
-  await page.getByRole("button", { name: "Add rotation zone" }).click();
+  await page.getByRole("button", { name: "Traffic direction tool" }).click();
   await clickCanvas(page, 0.58, 0.32);
+  await page.getByLabel("Allow rack rotation on this cell").check();
 
   await page.getByRole("button", { name: "Blocked / wall / column" }).click();
   await clickCanvas(page, 0.62, 0.32);

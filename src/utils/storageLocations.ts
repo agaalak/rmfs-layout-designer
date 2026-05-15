@@ -21,6 +21,7 @@ function storageForRack(layout: WarehouseLayout, rack: Rack, graph: RoadGraph, e
   return {
     storageLocationId: existing?.storageLocationId ?? storageIdForRack(rack),
     cells,
+    podServiceCell: existing?.podServiceCell ?? cells[0],
     allowedRackTypes: existing?.allowedRackTypes?.length ? existing.allowedRackTypes : [rack.rackTypeId],
     defaultRackOrientationDeg: existing?.defaultRackOrientationDeg ?? rack.currentOrientationDeg,
     approachWaypointIds,
@@ -36,6 +37,7 @@ function storageForCell(layout: WarehouseLayout, cell: GridCell, index: number, 
   return {
     storageLocationId: existing?.storageLocationId ?? `storage_empty_${cell.row}_${cell.col}_${index}`,
     cells: [cell],
+    podServiceCell: existing?.podServiceCell ?? cell,
     allowedRackTypes: existing?.allowedRackTypes?.length ? existing.allowedRackTypes : ["two_face_mobile_rack"],
     defaultRackOrientationDeg: existing?.defaultRackOrientationDeg ?? 0,
     approachWaypointIds: objectApproachNodes(layout, cell, graph),

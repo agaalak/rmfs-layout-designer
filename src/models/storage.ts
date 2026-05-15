@@ -6,6 +6,7 @@ export type StorageLocationStatus = "EMPTY" | "OCCUPIED" | "RESERVED" | "BLOCKED
 export interface StorageLocation {
   storageLocationId: string;
   cells: GridCell[];
+  podServiceCell: GridCell;
   allowedRackTypes: string[];
   defaultRackOrientationDeg: CardinalOrientation;
   approachWaypointIds: string[];
@@ -15,4 +16,3 @@ export interface StorageLocation {
   zoneId?: string;
   locked?: boolean;
 }
-

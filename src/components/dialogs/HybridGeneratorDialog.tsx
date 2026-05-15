@@ -26,7 +26,7 @@ export function HybridGeneratorDialog({ open, onClose }: HybridGeneratorDialogPr
   return (
     <DialogShell title="Generate Hybrid Layout" open={open} onClose={onClose}>
       <div className="mb-3 rounded-md border border-border bg-slate-50 p-2 text-xs text-muted-foreground">
-        Current blocked cells, human zones, docks, roads, fixed stations, chargers, and parking are treated as constraints. The generator fills racks, aisles, queues, rotation zones, and remaining support cells around them.
+        Current blocked cells, human zones, docks, roads, fixed stations, chargers, and parking are treated as constraints. The generator fills racks, aisles, queue lanes, rotation-enabled cells, and remaining support cells around them.
       </div>
       <GeneratorFields params={params} set={set} />
       <div className="mt-4 flex justify-end gap-2">

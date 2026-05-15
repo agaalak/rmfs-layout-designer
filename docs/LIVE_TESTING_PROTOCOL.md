@@ -37,7 +37,7 @@ Run these flows in order:
 5. Spacebar-drag, middle-drag, or right-drag pan.
 6. Create a new empty layout.
 7. Draw roads and queue cells.
-8. Place at least one rack, station, charger, parking spot, and rotation zone.
+8. Place at least one rack, station, charger, parking spot, and rotation-enabled cell through the Direction tool.
 9. Populate inventory.
 10. Generate sample orders.
 11. Initialize simulation.
@@ -106,4 +106,15 @@ For faster smoke while debugging UI structure:
 ```bash
 npm run test:e2e:smoke
 ```
+# Semantic QA Checklist - 2026-05-14
 
+Use this checklist when testing corrected RMFS semantics:
+
+1. Load Small Demo and confirm validation errors are zero.
+2. In Design, select a station and confirm queue lanes are listed separately.
+3. Use the Direction tool on a road cell and enable rack rotation.
+4. Start Experimental Simulation and run one order.
+5. In the event log, confirm pickup happens after reaching the pod service cell.
+6. Confirm station service starts only after the robot enters the station service cell.
+7. Confirm rotation events reference rotation-enabled cells, not rotation-zone objects.
+8. Export JSON and confirm no `ROTATION` cell type appears.

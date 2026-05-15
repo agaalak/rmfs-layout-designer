@@ -20,9 +20,9 @@ function concatPaths(paths: GridCell[][]) {
 function routePath(route: SimulationRoutePlan) {
   return concatPaths([
     route.emptyPathToRack,
-    route.pathToPreStationRotationZone ?? [],
+    route.pathToPreStationRotationCell ?? [],
     route.loadedPathToStation,
-    route.pathToPostStationRotationZone ?? [],
+    route.pathToPostStationRotationCell ?? [],
     route.returnPath
   ]);
 }

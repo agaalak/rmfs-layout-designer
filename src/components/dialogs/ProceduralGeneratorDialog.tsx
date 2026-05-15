@@ -55,7 +55,7 @@ export function GeneratorFields({
         ["stationCount", "Station count"],
         ["chargerCount", "Charger count"],
         ["parkingSpotCount", "Parking count"],
-        ["rotationZoneCount", "Rotation zones"],
+        ["rotationZoneCount", "Rotation-enabled cells"],
         ["candidateCount", "Candidate count"]
       ].map(([key, label]) => (
         <label key={key} className="flex flex-col gap-1">

@@ -48,7 +48,7 @@ export function exportSummaryMarkdown(layout: WarehouseLayout, analytics: Analyt
 ## Assumptions
 
 - Analytics use graph shortest paths, not animated robot simulation.
-- Orientation penalties are estimated through rotation zones.
+- Orientation penalties are estimated through rotation-enabled cells.
 - Congestion is an approximate shortest-path edge-use score.
 
 ## Limitations

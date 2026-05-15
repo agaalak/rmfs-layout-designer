@@ -104,4 +104,19 @@ Statuses: open, in progress, fixed, deferred.
 |---|---|---:|---|---|---|---|---|---|---|
 | A11Y-P2-001 | Some icon-only/debug controls need focus review | P2 | open | Keyboard navigation | Visible focus and aria labels everywhere | Main controls covered; deeper panel review needed | UI components | Run axe/manual keyboard audit | A11y test |
 | DOC-P1-001 | Docs must separate implemented vs experimental | P1 | fixed | README/status review | No overclaiming full MAPF/RAWSim-O parity | Updated docs now mark gaps and experimental scope | `docs/*`, `README.md` | Continue after each pass | Documentation review |
+# Semantic Correction Backlog Update - 2026-05-14
+
+Fixed:
+
+- P0: Queue cells embedded in stations.
+- P0: Station service could be reasoned about as queue-cell service.
+- P0: Pickup/drop routes used approach-cell terminology and behavior.
+- P0: Rotation modeled as a distinct cell type/runtime object.
+- P0: Old import/export schema preserved wrong queue/rotation semantics.
+
+Deferred:
+
+- P1: Dedicated visual queue-lane editing/reordering beyond current generated/manual cell editing.
+- P1: Richer post-drop egress visualization.
+- P2: Full contextual graph preventing any unassigned station pass-through in every analytics/path-planning context.
 

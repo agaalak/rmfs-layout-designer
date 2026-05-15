@@ -2,6 +2,7 @@ import type { GridCell } from "../models/grid";
 import type { WarehouseLayout } from "../models/layout";
 import { cellKey, inBounds } from "../utils/gridMath";
 import { rackFootprintCells, rackOccupiedCells } from "../utils/rackFootprint";
+import { directionBetweenCells, stationQueueCells } from "../utils/queueLanes";
 
 export interface ValidationIssue {
   id: string;
@@ -68,6 +69,14 @@ export function validateObjects(layout: WarehouseLayout): ValidationIssue[] {
   }
 
   for (const cell of layout.cells) {
+    if ((cell.cellType as string) === "ROTATION") {
+      issues.push({
+        id: `rotation_cell_type_${cell.row}_${cell.col}`,
+        severity: "error",
+        message: "ROTATION is no longer a valid cell type. Use Direction/Traffic settings to enable rotation on a traversable cell.",
+        cell
+      });
+    }
     if (!inBounds(cell, layout.grid)) {
       issues.push({
         id: `cell_bounds_${cell.row}_${cell.col}`,
@@ -206,6 +215,15 @@ export function validateObjects(layout: WarehouseLayout): ValidationIssue[] {
         objectId: location.storageLocationId
       });
     }
+    if (!location.podServiceCell || !location.cells.some((cell) => cellKey(cell) === cellKey(location.podServiceCell))) {
+      issues.push({
+        id: `storage_pod_service_cell_${location.storageLocationId}`,
+        severity: "error",
+        message: `Storage location ${location.storageLocationId} must define a pod service cell inside its occupied cells.`,
+        cell: location.cells[0],
+        objectId: location.storageLocationId
+      });
+    }
     if (location.currentlyStoredRackId && !layout.racks.some((rack) => rack.id === location.currentlyStoredRackId)) {
       issues.push({
         id: `storage_invalid_rack_${location.storageLocationId}`,
@@ -263,16 +281,67 @@ export function validateObjects(layout: WarehouseLayout): ValidationIssue[] {
 
   for (const station of layout.stations) {
     claim(station.cell, station.id, `Station ${station.stationId}`);
-    if (station.queueCells.length === 0) {
+    const queueCells = stationQueueCells(layout, station);
+    if (queueCells.length === 0) {
       issues.push({
         id: `station_queue_${station.id}`,
         severity: "warning",
-        message: `Station ${station.stationId} has no queue or approach cells.`,
+        message: `Station ${station.stationId} has no linked queue lane.`,
         cell: station.cell,
         objectId: station.id
       });
     }
-    for (const cell of station.queueCells) claim(cell, `${station.id}:queue`, `Queue for ${station.stationId}`);
+    for (const cell of queueCells) {
+      if (cellKey(cell) === cellKey(station.cell)) {
+        issues.push({
+          id: `station_queue_overlaps_service_${station.id}_${cell.row}_${cell.col}`,
+          severity: "error",
+          message: `Queue cells must be detached from station ${station.stationId}'s service cell.`,
+          cell,
+          objectId: station.id
+        });
+      }
+      claim(cell, `${station.id}:queue`, `Queue lane for ${station.stationId}`);
+    }
+  }
+
+  const queueCellClaims = new Map<string, string>();
+  for (const lane of layout.queueLanes ?? []) {
+    if (lane.cells.length === 0) {
+      issues.push({ id: `queue_lane_empty_${lane.queueLaneId}`, severity: "error", message: `Queue lane ${lane.queueLaneId} must have at least one queue cell.`, objectId: lane.queueLaneId });
+      continue;
+    }
+    const station = layout.stations.find((item) => item.id === lane.stationId);
+    if (!station) {
+      issues.push({ id: `queue_lane_station_missing_${lane.queueLaneId}`, severity: "error", message: `Queue lane ${lane.queueLaneId} references a missing station.`, objectId: lane.queueLaneId });
+      continue;
+    }
+    const ordered = [...lane.cells].sort((a, b) => a.queueIndex - b.queueIndex);
+    for (let index = 0; index < ordered.length; index += 1) {
+      const current = ordered[index];
+      const target = ordered[index + 1]?.cell ?? station.cell;
+      const expected = directionBetweenCells(current.cell, target);
+      if (!expected || current.directionToNext !== expected) {
+        issues.push({
+          id: `queue_lane_direction_${lane.queueLaneId}_${index}`,
+          severity: "error",
+          message: `Queue lane ${lane.queueLaneId} cell ${index} direction must lead to the next queue cell or station cell.`,
+          cell: current.cell,
+          objectId: lane.queueLaneId
+        });
+      }
+      const existing = queueCellClaims.get(cellKey(current.cell));
+      if (existing && existing !== lane.queueLaneId) {
+        issues.push({
+          id: `queue_lane_overlap_${lane.queueLaneId}_${cellKey(current.cell)}`,
+          severity: "error",
+          message: `Queue lane ${lane.queueLaneId} overlaps queue lane ${existing}.`,
+          cell: current.cell,
+          objectId: lane.queueLaneId
+        });
+      }
+      queueCellClaims.set(cellKey(current.cell), lane.queueLaneId);
+    }
   }
 
   for (const charger of layout.chargingSpots) {
@@ -302,8 +371,21 @@ export function validateObjects(layout: WarehouseLayout): ValidationIssue[] {
     for (const cell of parkingCells) claim(cell, parking.id, `Parking ${parking.parkingId}`);
   }
 
-  for (const zone of layout.rotationZones) {
-    for (const cell of zone.cells) claim(cell, zone.id, `Rotation zone ${zone.rotationZoneId}`);
+  for (const cell of layout.cells.filter((item) => item.allowRotation)) {
+    if (!["ROAD", "QUEUE", "STATION"].includes(cell.cellType)) {
+      issues.push({
+        id: `rotation_cell_not_traversable_${cell.row}_${cell.col}`,
+        severity: "error",
+        message: `Rotation-enabled cell at row ${cell.row}, column ${cell.col} must be a traversable road, queue, or station cell.`,
+        cell
+      });
+    }
+    if ((cell.rotationCapacity ?? 1) <= 0) {
+      issues.push({ id: `rotation_capacity_${cell.row}_${cell.col}`, severity: "error", message: "Rotation capacity must be positive.", cell });
+    }
+    if ((cell.rotationTimeSec ?? 0) < 0) {
+      issues.push({ id: `rotation_time_${cell.row}_${cell.col}`, severity: "error", message: "Rotation time cannot be negative.", cell });
+    }
   }
 
   return issues;

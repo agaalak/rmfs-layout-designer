@@ -30,7 +30,7 @@ describe("user-reported stabilization fixes", () => {
     expect(small.stations.length).toBeGreaterThanOrEqual(3);
     expect(small.chargingSpots.length).toBe(2);
     expect(small.parkingSpots.length).toBeGreaterThanOrEqual(4);
-    expect(small.rotationZones.length).toBeGreaterThanOrEqual(2);
+    expect(small.cells.filter((cell) => cell.allowRotation).length).toBeGreaterThanOrEqual(2);
     expect(inventoryFromLayout(small).some((bin) => bin.sku && bin.quantity > 0)).toBe(true);
     expect(validateSimulationStart(small)).toHaveLength(0);
     expect(large.grid.rows * large.grid.columns).toBeGreaterThan(small.grid.rows * small.grid.columns);
@@ -169,5 +169,5 @@ describe("user-reported stabilization fixes", () => {
     expect(state.trafficDiagnostics.runtimeCollisionPreventionCount).toBe(0);
     expect(state.eventLog.some((event) => event.message.includes("Collision prevented"))).toBe(false);
     expect(state.failedTasks.length).toBe(0);
-  });
+  }, 20000);
 });

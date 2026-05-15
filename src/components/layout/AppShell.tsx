@@ -83,9 +83,7 @@ export function AppShell() {
               ? { kind: "charger", id: issue.objectId }
               : layout.parkingSpots.some((item) => item.id === issue.objectId)
                 ? { kind: "parking", id: issue.objectId }
-                : layout.rotationZones.some((item) => item.id === issue.objectId)
-                  ? { kind: "rotation", id: issue.objectId }
-                  : undefined;
+                : undefined;
       if (ref) {
         selectObject(ref);
         return;

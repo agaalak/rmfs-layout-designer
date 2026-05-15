@@ -3,7 +3,8 @@ import type { ValidationIssue } from "./validateObjects";
 
 export function validateOrientation(layout: WarehouseLayout): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
-  const supported = new Set(layout.rotationZones.flatMap((zone) => zone.supportedOrientationsDeg));
+  const rotationCells = layout.cells.filter((cell) => cell.allowRotation);
+  const supported = new Set(rotationCells.flatMap((cell) => cell.supportedRotationOrientationsDeg ?? [0, 90, 180, 270]));
   for (const rack of layout.racks) {
     for (const station of layout.stations) {
       if (!rack.allowedOrientationsDeg.includes(station.requiredRackOrientationDeg)) {
@@ -17,13 +18,13 @@ export function validateOrientation(layout: WarehouseLayout): ValidationIssue[] 
       }
       if (
         rack.currentOrientationDeg !== station.requiredRackOrientationDeg &&
-        layout.rotationZones.length > 0 &&
+        rotationCells.length > 0 &&
         !supported.has(station.requiredRackOrientationDeg)
       ) {
         issues.push({
           id: `orientation_zone_missing_${rack.id}_${station.id}`,
           severity: "error",
-          message: `No rotation zone supports ${station.requiredRackOrientationDeg} degrees for ${station.stationId}.`,
+          message: `No rotation-enabled cell supports ${station.requiredRackOrientationDeg} degrees for ${station.stationId}.`,
           cell: station.cell,
           objectId: station.id
         });

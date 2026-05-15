@@ -26,9 +26,9 @@ export type OperationalTaskStatus =
 
 export interface MovementRoutePlan {
   pathToRackApproach: GridCell[];
-  pathToPreStationRotationZone?: GridCell[];
+  pathToPreStationRotationCell?: GridCell[];
   pathToStationQueue: GridCell[];
-  pathToPostStationRotationZone?: GridCell[];
+  pathToPostStationRotationCell?: GridCell[];
   pathToStorageApproach: GridCell[];
   pathToParking?: GridCell[];
   pathToCharger?: GridCell[];

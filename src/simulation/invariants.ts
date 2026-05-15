@@ -1,6 +1,7 @@
 import type { WarehouseLayout } from "../models/layout";
 import type { SimulationState } from "../models/simulation";
 import { cellKey, inBounds } from "../utils/gridMath";
+import { stationQueueCells } from "../utils/queueLanes";
 import { envelopesOverlap } from "./collisionEnvelope";
 import { getAllRobotRuntimeEnvelopes } from "./collisionRuntime";
 
@@ -101,7 +102,8 @@ export function checkSimulationInvariants(layout: WarehouseLayout, state: Simula
       pushIssue(issues, "station_queue.invalid_station", `Queue references missing station ${queue.stationId}.`, [queue.stationId]);
       continue;
     }
-    if (queue.waitingRobotIds.length > station.maxQueueLength) pushIssue(issues, "station_queue.overflow", `Station ${station.stationId} queue exceeds max length.`, [station.id]);
+    const capacity = Math.max(1, stationQueueCells(layout, station).length);
+    if (queue.waitingRobotIds.length > capacity) pushIssue(issues, "station_queue.overflow", `Station ${station.stationId} queue exceeds linked queue lane capacity.`, [station.id]);
     for (const robotId of queue.waitingRobotIds) {
       if (!robotIds.has(robotId)) pushIssue(issues, "station_queue.invalid_robot", `Station ${station.stationId} queue references missing robot ${robotId}.`, [station.id, robotId]);
     }

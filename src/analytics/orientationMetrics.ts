@@ -1,6 +1,7 @@
 import type { WarehouseLayout } from "../models/layout";
-import { buildRoadGraph, rackApproachNodes, rotationNodes, stationNodes } from "../graph/graphBuilder";
+import { buildRoadGraph, rackApproachNodes, rotationCellNodes, stationNodes } from "../graph/graphBuilder";
 import { dijkstraFromSources, reverseGraph } from "../graph/shortestPath";
+import { cellKey } from "../utils/gridMath";
 import { mean } from "../utils/units";
 
 export interface OrientationMetrics {
@@ -31,9 +32,10 @@ export function calculateOrientationMetrics(layout: WarehouseLayout): Orientatio
     { toRotation: Map<string, number>; fromRotation: Map<string, number> }
   >();
   for (const orientation of [0, 90, 180, 270]) {
-    const nodes = layout.rotationZones
-      .filter((zone) => zone.supportedOrientationsDeg.includes(orientation as 0 | 90 | 180 | 270))
-      .flatMap((zone) => rotationNodes(zone, graph));
+    const nodes = rotationCellNodes(layout, graph).filter((node) => {
+      const cell = layout.cells.find((candidate) => cellKey(candidate) === node);
+      return cell?.supportedRotationOrientationsDeg?.includes(orientation as 0 | 90 | 180 | 270);
+    });
     rotationNodesByOrientation.set(orientation, nodes);
     rotationDistanceMapsByOrientation.set(orientation, {
       toRotation: dijkstraFromSources(reverse, nodes),
@@ -74,7 +76,7 @@ export function calculateOrientationMetrics(layout: WarehouseLayout): Orientatio
         const rotationNodesForStation = rotationNodesByOrientation.get(station.requiredRackOrientationDeg) ?? [];
         if (rotationNodesForStation.length === 0) {
           invalidOrientationCount += 1;
-          warnings.add(`No rotation zone supports ${station.requiredRackOrientationDeg} degrees.`);
+          warnings.add(`No rotation-enabled cell supports ${station.requiredRackOrientationDeg} degrees.`);
         } else {
           const maps = rotationDistanceMapsByOrientation.get(station.requiredRackOrientationDeg);
           const a = Math.min(...approachNodes.map((node) => maps?.toRotation.get(node) ?? Infinity));

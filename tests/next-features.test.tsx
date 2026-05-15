@@ -115,7 +115,7 @@ describe("next feature pass", () => {
     const migrated = parseLayoutJson(JSON.stringify(oldJson));
     expect(migrated.ok).toBe(true);
     expect(migrated.warnings[0]).toContain("Older layout");
-    expect(migrated.layout?.layoutSchemaVersion).toBe("0.2.0");
+    expect(migrated.layout?.layoutSchemaVersion).toBe("0.3.0");
   });
 
   it("tracks unsaved changes and renders keyboard shortcut help", () => {

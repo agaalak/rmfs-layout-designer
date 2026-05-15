@@ -146,8 +146,8 @@ describe("2D simulation foundation", () => {
     const second = reserveEnvelopePath(first.table, "robot_b", "task_b", path, 0, 1, (cell) => [cell]);
     expect(second.conflict?.type).toBe("envelope");
 
-    const reservedZone = reserveResource(table, "rz_1", "ROTATION_ZONE", 0, 5, 1, { robotId: "robot_a", taskId: "task_a" });
-    const conflictedZone = reserveResource(reservedZone.table, "rz_1", "ROTATION_ZONE", 1, 2, 1, { robotId: "robot_b", taskId: "task_b" });
+    const reservedZone = reserveResource(table, "rotation_cell_1:1", "ROTATION_CELL", 0, 5, 1, { robotId: "robot_a", taskId: "task_a" });
+    const conflictedZone = reserveResource(reservedZone.table, "rotation_cell_1:1", "ROTATION_CELL", 1, 2, 1, { robotId: "robot_b", taskId: "task_b" });
     expect(conflictedZone.conflict?.type).toBe("resource");
 
     const queue = reserveResource(table, "station_1", "STATION_QUEUE_SLOT", 0, 10, 2, { robotId: "robot_a" });

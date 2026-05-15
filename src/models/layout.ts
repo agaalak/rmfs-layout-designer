@@ -1,6 +1,7 @@
 import type { ChargingSpot } from "./charging";
 import type { GridConfig, LayoutCell, LayoutMode, PhysicalDimensions } from "./grid";
 import type { ParkingSpot } from "./parking";
+import type { QueueLane } from "./queue";
 import type { Rack } from "./rack";
 import type { RotationZone } from "./rotation";
 import type { Station } from "./station";
@@ -66,8 +67,10 @@ export interface WarehouseLayout {
   racks: Rack[];
   storageLocations: StorageLocation[];
   stations: Station[];
+  queueLanes: QueueLane[];
   chargingSpots: ChargingSpot[];
   parkingSpots: ParkingSpot[];
+  /** @deprecated Legacy migration metadata only. Rotation is now a LayoutCell property. */
   rotationZones: RotationZone[];
   trafficRules: TrafficRule[];
   robotAssumptions: RobotAssumptions;
@@ -77,7 +80,7 @@ export interface WarehouseLayout {
   metadata: Record<string, unknown>;
 }
 
-export type LayoutObjectKind = "rack" | "station" | "charger" | "parking" | "rotation";
+export type LayoutObjectKind = "rack" | "station" | "charger" | "parking";
 
 export interface SelectedObjectRef {
   kind: LayoutObjectKind;

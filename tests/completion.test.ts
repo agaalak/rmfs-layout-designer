@@ -10,6 +10,7 @@ import { useLayoutStore } from "../src/store/layoutStore";
 import { deriveDimensions } from "../src/utils/gridMath";
 import { validateConnectivity } from "../src/graph/connectivity";
 import { validateLayout } from "../src/validation/validateLayout";
+import { makeQueueLaneFromCells } from "../src/utils/queueLanes";
 
 function connectedBase(): WarehouseLayout {
   const layout = createEmptyLayout({ rows: 5, columns: 5, cellWidthM: 1.2, cellDepthM: 1.2 });
@@ -22,8 +23,9 @@ function connectedBase(): WarehouseLayout {
     { row: 2, col: 3, cellType: "RACK_STORAGE", allowedDirections: ["west"] },
     { row: 1, col: 3, cellType: "CHARGING", allowedDirections: ["west"] },
     { row: 2, col: 1, cellType: "PARKING", allowedDirections: ["east"] },
-    { row: 3, col: 2, cellType: "ROTATION", allowedDirections: ["north"] }
+    { row: 3, col: 2, cellType: "ROAD", allowedDirections: ["north"], allowRotation: true, supportedRotationOrientationsDeg: [0, 90, 180, 270], rotationTimeSec: 6, rotationCapacity: 1 }
   ];
+  layout.queueLanes = [makeQueueLaneFromCells("queue_pick_001_001", "station", [{ row: 0, col: 1 }], { row: 0, col: 0 })!];
   layout.stations = [
     {
       id: "station",
@@ -33,9 +35,9 @@ function connectedBase(): WarehouseLayout {
       serviceSide: "NORTH",
       acceptedRackFaces: ["A", "B"],
       requiredRackOrientationDeg: 0,
-      queueCells: [{ row: 0, col: 1 }],
       targetServiceTimeSec: 30,
-      maxQueueLength: 1
+      capacity: 1,
+      queueLaneIds: ["queue_pick_001_001"]
     }
   ];
   layout.racks = [
@@ -57,17 +59,7 @@ function connectedBase(): WarehouseLayout {
   ];
   layout.chargingSpots = [{ id: "charger", chargerId: "charger_001", cells: [{ row: 1, col: 3 }], capacityRobots: 1 }];
   layout.parkingSpots = [{ id: "parking", parkingId: "parking_001", cell: { row: 2, col: 1 }, parkingType: "IDLE" }];
-  layout.rotationZones = [
-    {
-      id: "rotation",
-      rotationZoneId: "rotation_001",
-      cells: [{ row: 3, col: 2 }],
-      allowedRackTypes: ["rack"],
-      supportedOrientationsDeg: [0, 90, 180, 270],
-      rotationTimeSec: 6,
-      safetyClearanceCells: 1
-    }
-  ];
+  layout.rotationZones = [];
   return layout;
 }
 

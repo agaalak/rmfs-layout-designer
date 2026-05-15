@@ -1,3 +1,5 @@
+import type { CardinalOrientation } from "./rack";
+
 export type LayoutMode = "manual" | "procedural" | "hybrid";
 
 export type CellType =
@@ -8,7 +10,6 @@ export type CellType =
   | "QUEUE"
   | "CHARGING"
   | "PARKING"
-  | "ROTATION"
   | "BLOCKED"
   | "HUMAN_ZONE"
   | "DOCK";
@@ -37,12 +38,16 @@ export interface LayoutCell extends GridCell {
   allowedDirections: Direction[];
   zoneId?: string;
   locked?: boolean;
+  allowRotation?: boolean;
+  supportedRotationOrientationsDeg?: CardinalOrientation[];
+  rotationTimeSec?: number;
+  rotationCapacity?: number;
+  allowedRotationRackTypes?: string[];
 }
 
 export const traversableCellTypes = new Set<CellType>([
   "ROAD",
   "QUEUE",
-  "ROTATION",
   "CHARGING",
   "PARKING",
   "STATION"

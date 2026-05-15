@@ -1,4 +1,4 @@
-import { Arrow, Circle, Group, Rect, Text } from "react-konva";
+import { Arrow, Group, Rect, Text } from "react-konva";
 import type { WarehouseLayout, SelectedObjectRef } from "../../models/layout";
 import type { ValidationResult } from "../../validation/validateLayout";
 import { cellToPoint, orientationToVector } from "../../utils/geometry";
@@ -194,38 +194,11 @@ export function ObjectLayer({ layout, selected, validation, cellSize, showLabels
           </Group>
         );
       })}
-      {layout.rotationZones.map((zone) => {
-        const point = cellToPoint(zone.cells[0], cellSize);
-        const selectedZone = isSelected(selected, "rotation", zone.id);
+      {layout.cells.filter((cell) => cell.allowRotation).map((cell) => {
+        const point = cellToPoint(cell, cellSize);
         return (
-          <Group
-            key={zone.id}
-            x={point.x}
-            y={point.y}
-            draggable={draggableObjects}
-            onClick={(event) => {
-              event.cancelBubble = true;
-              onSelect({ kind: "rotation", id: zone.id }, event.evt.shiftKey);
-            }}
-            onDragEnd={(event) => onMove({ kind: "rotation", id: zone.id }, Math.round(event.target.y() / cellSize), Math.round(event.target.x() / cellSize))}
-          >
-            <Rect width={cellSize} height={cellSize} fill="#fb7185" stroke={objectStroke(validation, selectedZone, zone.id)} strokeWidth={selectedZone ? 3 : 1.5} cornerRadius={2} />
-            <Circle x={cellSize / 2} y={cellSize / 2} radius={cellSize / 4} stroke="#881337" strokeWidth={2} />
-            {showLabels ? (
-              <Text
-                text={shortNumericLabel(zone.rotationZoneId)}
-                x={1}
-                y={1}
-                width={cellSize - 2}
-                height={cellSize - 2}
-                align="center"
-                verticalAlign="middle"
-                fontSize={9}
-                fontStyle="bold"
-                fill="#881337"
-              />
-            ) : null}
-            {zone.locked ? <Text text="L" x={cellSize - 7} y={1} fontSize={7} fill="#881337" fontStyle="bold" /> : null}
+          <Group key={`rotation_cell_${cell.row}_${cell.col}`} x={point.x} y={point.y} listening={false}>
+            <Text text="⟳" x={0} y={0} width={cellSize} height={cellSize} align="center" verticalAlign="middle" fontSize={Math.max(11, cellSize * 0.55)} fontStyle="bold" fill="#be123c" />
           </Group>
         );
       })}

@@ -10,7 +10,6 @@ export const cellColors: Record<string, string> = {
   QUEUE: "#fde68a",
   CHARGING: "#86efac",
   PARKING: "#c4b5fd",
-  ROTATION: "#fda4af",
   BLOCKED: "#111827",
   HUMAN_ZONE: "#f5deb3",
   DOCK: "#a16207"

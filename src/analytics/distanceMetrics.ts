@@ -1,5 +1,5 @@
 import type { WarehouseLayout } from "../models/layout";
-import { buildRoadGraph, chargerNodes, rackApproachNodes, rotationNodes, stationNodes } from "../graph/graphBuilder";
+import { buildRoadGraph, chargerNodes, rackApproachNodes, rotationCellNodes, stationNodes } from "../graph/graphBuilder";
 import { dijkstraFromSources, reverseGraph } from "../graph/shortestPath";
 import { cellKey } from "../utils/gridMath";
 import { mean, percentile } from "../utils/units";
@@ -32,7 +32,7 @@ export function calculateDistanceMetrics(layout: WarehouseLayout): DistanceMetri
     .map((parking) => fromStations.get(cellKey(parking.cell)) ?? Infinity)
     .filter(Number.isFinite);
 
-  const rotationSources = layout.rotationZones.flatMap((zone) => rotationNodes(zone, graph));
+  const rotationSources = rotationCellNodes(layout, graph);
   const toRotation = dijkstraFromSources(reverseGraph(graph), rotationSources);
   const rackToRotationDistances = layout.racks
     .map((rack) => rackApproachNodes(layout, rack, graph).map((node) => toRotation.get(node) ?? Infinity))

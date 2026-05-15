@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createEmptyLayout } from "../src/generators/proceduralGenerator";
 import { validateLayout } from "../src/validation/validateLayout";
+import { makeQueueLaneFromCells } from "../src/utils/queueLanes";
 
 describe("layout validation", () => {
   it("rejects rack footprints beyond supported 2x2 cells", () => {
@@ -11,6 +12,7 @@ describe("layout validation", () => {
       { row: 1, col: 1, cellType: "ROAD", allowedDirections: ["north", "south"] },
       { row: 2, col: 1, cellType: "RACK_STORAGE", allowedDirections: ["north", "south"] }
     ];
+    layout.queueLanes = [makeQueueLaneFromCells("queue_pick_001_001", "station", [{ row: 0, col: 1 }], { row: 0, col: 0 })!];
     layout.stations = [
       {
         id: "station",
@@ -20,9 +22,9 @@ describe("layout validation", () => {
         serviceSide: "NORTH",
         acceptedRackFaces: ["A", "B"],
         requiredRackOrientationDeg: 0,
-        queueCells: [{ row: 0, col: 1 }],
         targetServiceTimeSec: 30,
-        maxQueueLength: 1
+        capacity: 1,
+        queueLaneIds: ["queue_pick_001_001"]
       }
     ];
     layout.racks = [

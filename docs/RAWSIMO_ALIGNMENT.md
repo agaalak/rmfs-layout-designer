@@ -40,7 +40,7 @@ An RMFS layout instance contains:
 - robots or simulation config
 - chargers
 - parking locations
-- rotation zones
+- rotation-enabled cells
 - traffic rules
 - item inventory through rack bins
 - orders/tasks in the simulator layer
@@ -267,3 +267,14 @@ Strategies are intentionally simple, but explicit: FIFO/priority/due-date order 
 4. Add WHCA* before CBS or more advanced MAPF solvers.
 5. Add battery drain, charger queues, and service-time variability.
 6. Keep full 3D simulator work out until the 2D event/state model remains stable.
+# 2026-05-14 Semantic Alignment Note
+
+The app now aligns more closely with RMFS/RAWSim-O physical semantics:
+
+- station queues are independent ordered waiting resources, not embedded station geometry
+- stations are service resources with a real service cell
+- racks/pods are picked and dropped at storage service cells
+- rotation is a permission on traversable cells, not a distinct cell type
+- old layouts migrate into this corrected model at import time
+
+Remaining gap: the traffic planner is still a practical reservation-based controller, not RAWSim-O's full discrete-event / multi-agent path planning stack.

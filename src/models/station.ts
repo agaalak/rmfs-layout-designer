@@ -12,9 +12,9 @@ export interface Station {
   serviceSide: ServiceSide;
   acceptedRackFaces: RackFaceId[];
   requiredRackOrientationDeg: CardinalOrientation;
-  queueCells: GridCell[];
   targetServiceTimeSec: number;
-  maxQueueLength: number;
+  capacity: number;
+  queueLaneIds: string[];
   locked?: boolean;
 }
 

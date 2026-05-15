@@ -46,12 +46,13 @@ export function validateConnectivity(layout: WarehouseLayout): ValidationIssue[]
     });
   }
   for (const zoneId of connectivity.unreachableRotationZones) {
-    const zone = layout.rotationZones.find((item) => item.id === zoneId);
+    const key = zoneId.replace("rotation_cell_", "");
+    const cell = layout.cells.find((item) => `${item.row}:${item.col}` === key);
     issues.push({
       id: `unreachable_rotation_${zoneId}`,
       severity: "error",
-      message: `Rotation zone ${zone?.rotationZoneId ?? zoneId} is unreachable.`,
-      cell: zone?.cells[0],
+      message: `Rotation-enabled cell ${key} is unreachable.`,
+      cell,
       objectId: zoneId
     });
   }

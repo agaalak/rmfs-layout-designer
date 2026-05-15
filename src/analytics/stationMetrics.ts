@@ -2,6 +2,7 @@ import type { WarehouseLayout } from "../models/layout";
 import { buildRoadGraph, rackApproachNodes, stationNodes } from "../graph/graphBuilder";
 import { dijkstraFromSources, reverseGraph } from "../graph/shortestPath";
 import { clamp, mean, safeDivide } from "../utils/units";
+import { stationQueueCells } from "../utils/queueLanes";
 
 export interface StationMetrics {
   stationWorkloadBalanceScore: number;
@@ -41,7 +42,7 @@ export function calculateStationMetrics(layout: WarehouseLayout): StationMetrics
       station.stationId,
       safeDivide(
         assignedRackCountByStation[station.stationId],
-        Math.max(1, station.maxQueueLength) * Math.max(1, layout.racks.length / Math.max(1, layout.stations.length))
+        Math.max(1, stationQueueCells(layout, station).length) * Math.max(1, layout.racks.length / Math.max(1, layout.stations.length))
       )
     ])
   );

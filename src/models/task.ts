@@ -14,8 +14,8 @@ export type SimulationTaskStatus = "PENDING" | "ASSIGNED" | "IN_PROGRESS" | "COM
 export interface SimulationRoutePlan {
   emptyPathToRack: GridCell[];
   loadedPathToStation: GridCell[];
-  pathToPreStationRotationZone?: GridCell[];
-  pathToPostStationRotationZone?: GridCell[];
+  pathToPreStationRotationCell?: GridCell[];
+  pathToPostStationRotationCell?: GridCell[];
   returnPath: GridCell[];
 }
 

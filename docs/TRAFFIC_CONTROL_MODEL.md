@@ -21,7 +21,7 @@ Experimental Simulation Mode uses practical reservation-based traffic control. I
 - Loaded robot envelope: center cell plus carried rack occupied cells based on rack footprint and orientation.
 - Stationary rack envelope: rack occupied cells in storage.
 - Station service envelope: station service cell and active service reservation.
-- Rotation-zone envelope: rotation zone cells plus capacity reservation during dwell.
+- Rotation-cell envelope: rotation-enabled cells plus capacity reservation during dwell.
 - Charger and parking envelopes: charger/parking cells plus capacity reservation.
 
 ## Conflict Types
@@ -32,7 +32,7 @@ Experimental Simulation Mode uses practical reservation-based traffic control. I
 - Runtime robot overlap: interpolated or step-advanced robots attempt to occupy overlapping visible envelope cells.
 - Swept-envelope conflict: a loaded envelope would overlap blocked/static cells during a move.
 - Station queue capacity conflict: no queue slot is available.
-- Rotation-zone capacity conflict: rotation zone is already reserved at that time.
+- Rotation-cell capacity conflict: rotation-enabled cell is already reserved at that time.
 - Storage-location conflict: two returning racks reserve the same destination.
 - Deadlock/livelock: robots wait on each other or make no progress for too long.
 
@@ -52,7 +52,7 @@ This pass adds:
 
 - carried-rack collision envelopes in `src/simulation/collisionEnvelope.ts`
 - loaded-envelope path reservations in `src/simulation/reservationTable.ts` and `src/simulation/trafficController.ts`
-- resource reservations for rotation zones, station queues/service slots, storage, chargers, and parking
+- resource reservations for rotation-enabled cells, station queues/service slots, storage, chargers, and parking
 - wait/replan/block policy counters and traffic event-log entries
 - repeated-conflict and blocked-time deadlock detection in `src/simulation/deadlockDetector.ts`
 - deterministic scenario runner support in `src/simulation/scenarioRunner.ts`
@@ -86,3 +86,13 @@ This pass adds:
 3. Add CBS-style small-scenario comparison after WHCA* is stable.
 4. Improve deadlock recovery from conservative blocking to safe local backoff/replan.
 5. Add battery drain, charger queues, and station service variability.
+# 2026-05-14 Semantic Routing Update
+
+Traffic control now receives routes that reflect corrected RMFS semantics:
+
+- station routes include ordered queue lane cells and end at the actual station service cell
+- pickup/drop routes target `StorageLocation.podServiceCell`
+- rotation reservations use cell resource IDs such as `rotation_cell_12:8`
+- legacy rotation-zone resources are import-only migration metadata
+
+This is still not WHCA*, CBS, or full MAPF. Reservation and runtime collision guards remain the current traffic-control layer.

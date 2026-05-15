@@ -6,7 +6,7 @@ export type ReservationKind =
   | "ROBOT_VERTEX"
   | "ROBOT_EDGE"
   | "LOADED_ENVELOPE"
-  | "ROTATION_ZONE"
+  | "ROTATION_CELL"
   | "STATION_QUEUE_SLOT"
   | "STATION_SERVICE"
   | "STORAGE_LOCATION"

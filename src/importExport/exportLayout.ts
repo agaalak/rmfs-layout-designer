@@ -1,17 +1,19 @@
 import type { WarehouseLayout } from "../models/layout";
-import { APP_VERSION, LAYOUT_SCHEMA_VERSION } from "../generators/proceduralGenerator";
+import { APP_VERSION, LAYOUT_SCHEMA_VERSION, normalizeLayoutSemantics } from "../utils/layoutSemantics";
 
 export function exportLayoutJson(layout: WarehouseLayout): string {
   const now = new Date().toISOString();
+  const normalized = normalizeLayoutSemantics(layout);
   return JSON.stringify(
     {
-      ...layout,
+      ...normalized,
       layoutSchemaVersion: LAYOUT_SCHEMA_VERSION,
       appVersion: APP_VERSION,
-      createdAt: layout.createdAt ?? now,
+      createdAt: normalized.createdAt ?? now,
       modifiedAt: now,
+      rotationZones: [],
       metadata: {
-        ...layout.metadata,
+        ...normalized.metadata,
         exportedAt: now
       }
     },

@@ -198,7 +198,7 @@ export function AnalyzeWorkflowPanel({
             ["Max rack to station", `${fmt(analytics.distance.maxRackToStationDistance)} m`],
             ["Station to charger", `${fmt(analytics.distance.averageStationToChargerDistance)} m`],
             ["Station to parking", `${fmt(analytics.distance.averageStationToParkingDistance)} m`],
-            ["Rack to rotation zone", `${fmt(analytics.distance.averageRackToRotationZoneDistance)} m`]
+            ["Rack to rotation cell", `${fmt(analytics.distance.averageRackToRotationZoneDistance)} m`]
           ]}
         />
       ) : null}

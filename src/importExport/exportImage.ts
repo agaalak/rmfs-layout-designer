@@ -20,7 +20,6 @@ export function exportLayoutSvg(layout: WarehouseLayout, filename = "rmfs-layout
     QUEUE: "#fed7aa",
     CHARGING: "#38bdf8",
     PARKING: "#a78bfa",
-    ROTATION: "#fde047",
     BLOCKED: "#111827",
     HUMAN_ZONE: "#fca5a5",
     DOCK: "#94a3b8",

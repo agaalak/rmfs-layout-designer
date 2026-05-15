@@ -4,7 +4,7 @@ This document describes the simplified RAWSim-O-style operational model used by 
 
 ## Layout Design vs Operational Simulation
 
-Design Mode edits the physical layout: grid cells, roads, storage areas, racks, stations, chargers, parking, rotation zones, blocks, and traffic directions.
+Design Mode edits the physical layout: grid cells, roads, storage areas, racks, stations, chargers, parking, rotation-enabled cells, blocks, and traffic directions.
 
 Experimental Simulation Mode runs a time-based operational model on top of that layout. It does not change the physical design while running. The simulator converts layout resources into runtime state: robots, rack status, storage-location occupancy, station queues, orders, tasks, inventory snapshots, and event logs.
 
@@ -20,7 +20,7 @@ The implemented pick flow is:
 6. Reserve the rack, SKU quantity, source storage location, and return destination.
 7. Move the robot empty to a rack approach waypoint.
 8. Lift the rack and free the source storage location.
-9. Move loaded, optionally through a pre-station rotation zone.
+9. Move loaded, optionally through a pre-station rotation-enabled cell.
 10. Queue at the station.
 11. Run station service.
 12. Decrement picked inventory and fulfill order lines.
@@ -170,3 +170,15 @@ Known limitations:
 5. Improve realism: acceleration/deceleration, rotation dwell, battery drain, charging policy, and station service variability.
 6. Add experiment runner for multiple seeds, controller strategy comparison, layout comparison, and metric exports.
 7. Add 3D/RTS-style visualization only after the 2D simulator is stable.
+# 2026-05-14 Queue/Station/Pod Correction
+
+Operational flow now uses these physical checkpoints:
+
+1. Empty robot travels to the rack storage location `podServiceCell`.
+2. Robot lifts only while physically on that pod service cell.
+3. Loaded robot travels through the selected queue lane and into `station.cell`.
+4. Station service starts only from `station.cell`.
+5. Rotation occurs only on cells where `allowRotation=true`.
+6. Robot returns to the destination storage location `podServiceCell` before dropping.
+
+Queue cells are directional FIFO waiting cells. They are linked to stations by `QueueLane`, but they are not station cells.

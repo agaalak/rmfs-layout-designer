@@ -13,7 +13,7 @@ This is not the final 3D robot simulator, and it is not a full RAWSim-O replacem
 - Create Hybrid layouts by drawing fixed constraints first, then filling the rest procedurally.
 - Add, drag, drop, select, multi-select, delete, copy, paste, and rotate layout objects.
 - Configure warehouse rows, columns, cell size, and physical dimensions.
-- Model racks/pods, stations, queues, chargers, parking, rotation zones, blocked cells, human zones, docks, and traffic directions.
+- Model racks/pods, station service cells, directional queue lanes, chargers, parking, blocked cells, human zones, docks, traffic directions, and rotation-enabled cells.
 - Run validation and analytics without simulating robot movement.
 - Export/import layout JSON.
 - Export analytics JSON, CSV, Markdown report, PNG, and SVG.
@@ -41,17 +41,27 @@ On screens below the desktop editing breakpoint, the Design toolbox and workflow
 
 ## Demo Presets
 
-The first load uses **Small Demo**, a compact `22 x 30` RMFS layout with connected roads, racks, 3 stations, 2 chargers, 4 parking spots, rotation zones, sample rack-bin inventory, and simulation defaults for a small robot/task count.
+The first load uses **Small Demo**, a compact `22 x 30` RMFS layout with connected roads, racks, 3 stations, directional queue lanes, 2 chargers, 4 parking spots, rotation-enabled road cells, sample rack-bin inventory, and simulation defaults for a small robot/task count.
 
 The previous large `40 x 60` style layout remains available as **Large Demo** for stress and visual-density checks. Use the Design toolbar or the quick-start panel to switch demos.
 
 ## Modes
 
-Mode A, manual, starts with an empty grid. Use the left toolbox to draw roads, rack storage, queues, blocked cells, human zones, and docks, or place racks, stations, chargers, parking, and rotation zones.
+Mode A, manual, starts with an empty grid. Use the left toolbox to draw roads, rack storage, queues, blocked cells, human zones, and docks, or place racks, stations, chargers, and parking. Rotation is configured on selected traversable cells from the Direction/Traffic properties.
 
-Mode B, procedural, opens a generation dialog where you choose the layout family, dimensions, rack fill ratio, aisle spacing, station count, charger count and size, parking count, traffic mode, rotation zone count, and candidate count. The app generates alternatives, opens a candidate comparison drawer, lets you sort by score/density/distance/congestion/errors, previews selected candidates on the canvas, and applies the selected candidate as a fully editable layout. The stable generator focus is traditional external, internal centralized, internal distributed, hybrid external/internal, and dense cross-aisle layouts. True Flying-V remains Experimental, and the old Flying-V placeholder is disabled.
+Mode B, procedural, opens a generation dialog where you choose the layout family, dimensions, rack fill ratio, aisle spacing, station count, charger count and size, parking count, traffic mode, rotation-cell count, and candidate count. The app generates alternatives, opens a candidate comparison drawer, lets you sort by score/density/distance/congestion/errors, previews selected candidates on the canvas, and applies the selected candidate as a fully editable layout. The stable generator focus is traditional external, internal centralized, internal distributed, hybrid external/internal, and dense cross-aisle layouts. True Flying-V remains Experimental, and the old Flying-V placeholder is disabled.
 
-Hybrid mode uses the current layout as fixed constraints. Draw walls, columns, human zones, docks, mandatory aisles, fixed stations, chargers, and parking first, then mark important cells or objects as locked in the property panel. The Hybrid generator fills racks, rack blocks, aisles, queues, rotation zones, and remaining support cells around protected constraints.
+Hybrid mode uses the current layout as fixed constraints. Draw walls, columns, human zones, docks, mandatory aisles, fixed stations, chargers, and parking first, then mark important cells or objects as locked in the property panel. The Hybrid generator fills racks, rack blocks, aisles, queue lanes, rotation-enabled cells, and remaining support cells around protected constraints.
+
+## Corrected Queue, Station, Pod, And Rotation Semantics
+
+Schema `0.3.0` corrects the physical RMFS semantics:
+
+- Queue cells are directional waiting cells in first-class `QueueLane` records. They are not station cells.
+- A queue lane leads to a station service cell. Station service starts only after the robot enters `station.cell`.
+- A storage location has a `podServiceCell`. Robots must enter that cell before lifting or dropping a rack/pod.
+- Rotation is not a cell type. Rotation is a property on traversable cells, managed by the Direction/Traffic tool.
+- Old layouts with station-owned queue cells or rotation zones are migrated on import.
 
 ## Grid Size And Rack Footprint
 
@@ -98,27 +108,27 @@ You can:
 - Compare the top three candidates in a compact side panel.
 - Apply the selected candidate and keep editing it manually.
 
-## Orientation Zones
+## Rotation-Enabled Cells
 
-Stations have a required rack orientation and accepted rack faces. Rotation zones define where a carried rack may be analytically rotated.
+Stations have a required rack orientation and accepted rack faces. Rotation-enabled cells define where a carried rack may be analytically or experimentally rotated.
 
 The app estimates:
 
 - Whether pre-station rotation is required
 - Whether post-station rotation is required before returning home
-- Whether a compatible rotation zone exists
+- Whether a compatible rotation-enabled cell exists
 - Estimated rotation detour distance
 - Estimated rotation time penalty
 - Invalid orientation and face-access cases
 
-Design-mode analytics estimate orientation effects without animated rack rotation. Simulation Mode can route carried racks through compatible rotation zones, but full rack-rotation timing/control is still a future MAPF-level refinement.
+Design-mode analytics estimate orientation effects without animated rack rotation. Simulation Mode can route carried racks through compatible rotation-enabled cells, but full rack-rotation timing/control is still a future MAPF-level refinement.
 
 ## Analytics
 
 The analytics panel updates after layout changes. The Run analytics toolbar button refreshes the visible status summary; export buttons create JSON, CSV, and Markdown artifacts. Metrics include:
 
 - Storage: total cells, usable cells, rack count, rack storage cells, bin count, density, aisle ratio, hot/warm/cold distribution
-- Distance: average, median, p90, and max rack-to-station distance, charger access, parking access, rotation-zone access
+- Distance: average, median, p90, and max rack-to-station distance, charger access, parking access, rotation-cell access
 - Orientation: pre/post rotation percentages, detour distance, time penalty, invalid orientation count, face-access violations
 - Station: workload balance, queue pressure, nearest-station rack assignments, bottleneck estimate
 - Congestion proxy: likely busiest shortest-path edges, dead ends, narrow corridors, congestion risk
@@ -156,9 +166,9 @@ The simulation panel can:
 - Filter an event log by robot, task, entity, message, or severity.
 - Export simulation config JSON, event log CSV, metrics CSV, orders CSV, and inventory CSV.
 
-Robots follow shortest paths over the layout graph instead of driving straight through racks or walls. The planner respects one-way/two-way traffic rules, avoids blocked cells, uses adjacent rack approach cells for pickup/dropoff, and routes toward station queue/service cells. A practical time-expanded reservation table prevents obvious same-cell, edge-swap, loaded-envelope, and simple resource-capacity conflicts by inserting wait steps when possible.
+Robots follow shortest paths over the layout graph instead of driving straight through racks or walls. The planner respects one-way/two-way traffic rules, avoids blocked cells, enters the storage `podServiceCell` for pickup/dropoff, and routes through ordered queue lanes into the station service cell. A practical time-expanded reservation table prevents obvious same-cell, edge-swap, loaded-envelope, and simple resource-capacity conflicts by inserting wait steps when possible.
 
-Traffic control now includes carried-rack envelopes for `1x1`, `1x2`, `2x1`, and `2x2` racks, simple capacity reservations for rotation zones and queue/service resources, conservative deadlock detection, runtime collision guards, and deterministic collision scenarios for regression tests. The runtime guard rolls back unsafe moves before visual overlap becomes accepted simulation state, logs collision-prevented warnings, and increments traffic diagnostics. It remains a practical early traffic-control layer, not a globally optimal MAPF planner.
+Traffic control now includes carried-rack envelopes for `1x1`, `1x2`, `2x1`, and `2x2` racks, simple capacity reservations for rotation-enabled cells and queue/service resources, conservative deadlock detection, runtime collision guards, and deterministic collision scenarios for regression tests. The runtime guard rolls back unsafe moves before visual overlap becomes accepted simulation state, logs collision-prevented warnings, and increments traffic diagnostics. It remains a practical early traffic-control layer, not a globally optimal MAPF planner.
 
 The operational chain now follows a simplified RMFS flow: order lines/SKUs -> rack selection -> station assignment -> robot assignment -> rack reservation -> empty travel -> lift -> optional rotation -> station queue/service -> inventory update -> storage/reallocation decision -> return/drop -> task/order completion.
 

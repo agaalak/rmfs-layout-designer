@@ -1,5 +1,6 @@
 import type { WarehouseLayout } from "../models/layout";
-import { APP_VERSION, createEmptyLayout, LAYOUT_SCHEMA_VERSION } from "../generators/proceduralGenerator";
+import { createEmptyLayout } from "../generators/proceduralGenerator";
+import { APP_VERSION, LAYOUT_SCHEMA_VERSION, normalizeLayoutSemantics } from "../utils/layoutSemantics";
 import { deriveDimensions } from "../utils/gridMath";
 import { ensureStorageLocations } from "../utils/storageLocations";
 
@@ -28,7 +29,8 @@ export function parseLayoutJson(json: string): LayoutImportResult {
     return { ok: false, errors: ["Invalid RMFS layout JSON: missing grid or cells."], warnings: [] };
   }
   const warnings: string[] = [];
-  if (!parsed.layoutSchemaVersion) warnings.push("Older layout detected: missing layoutSchemaVersion. Applied 0.2.0 migration defaults.");
+  if (!parsed.layoutSchemaVersion) warnings.push("Older layout detected: missing layoutSchemaVersion. Applied 0.3.0 migration defaults.");
+  if (parsed.layoutSchemaVersion && parsed.layoutSchemaVersion !== LAYOUT_SCHEMA_VERSION) warnings.push(`Layout schema ${parsed.layoutSchemaVersion} migrated to ${LAYOUT_SCHEMA_VERSION}.`);
   const defaults = createEmptyLayout({
     rows: parsed.grid.rows,
     columns: parsed.grid.columns,
@@ -36,10 +38,10 @@ export function parseLayoutJson(json: string): LayoutImportResult {
     cellDepthM: parsed.grid.cellDepthM
   });
   const now = new Date().toISOString();
-  const layout = ensureStorageLocations({
+  const layout = ensureStorageLocations(normalizeLayoutSemantics({
     ...defaults,
     ...parsed,
-    layoutSchemaVersion: parsed.layoutSchemaVersion ?? LAYOUT_SCHEMA_VERSION,
+    layoutSchemaVersion: LAYOUT_SCHEMA_VERSION,
     appVersion: parsed.appVersion ?? APP_VERSION,
     createdAt: parsed.createdAt ?? now,
     modifiedAt: now,
@@ -47,6 +49,7 @@ export function parseLayoutJson(json: string): LayoutImportResult {
     racks: parsed.racks ?? [],
     storageLocations: parsed.storageLocations ?? [],
     stations: parsed.stations ?? [],
+    queueLanes: parsed.queueLanes ?? [],
     chargingSpots: parsed.chargingSpots ?? [],
     parkingSpots: parsed.parkingSpots ?? [],
     rotationZones: parsed.rotationZones ?? [],
@@ -55,7 +58,7 @@ export function parseLayoutJson(json: string): LayoutImportResult {
       ...(parsed.metadata ?? {}),
       importWarnings: warnings
     }
-  });
+  }));
   return {
     ok: true,
     errors: [],

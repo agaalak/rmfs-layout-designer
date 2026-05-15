@@ -214,8 +214,7 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
     ? layout.racks.find((rack) => rackOccupiedCells(rack, layout.grid).some((cell) => cellKey(cell) === cellKey(hoverCell)))?.rackId ??
       layout.stations.find((station) => cellKey(station.cell) === cellKey(hoverCell))?.stationId ??
       layout.chargingSpots.find((charger) => charger.cells.some((cell) => cellKey(cell) === cellKey(hoverCell)))?.chargerId ??
-      layout.parkingSpots.find((parking) => cellKey(parking.cell) === cellKey(hoverCell))?.parkingId ??
-      layout.rotationZones.find((zone) => zone.cells.some((cell) => cellKey(cell) === cellKey(hoverCell)))?.rotationZoneId
+      layout.parkingSpots.find((parking) => cellKey(parking.cell) === cellKey(hoverCell))?.parkingId
     : undefined;
 
   return (
@@ -305,8 +304,7 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
               ...layout.racks.filter((rack) => rackOccupiedCells(rack, layout.grid).some((cell) => cells.has(`${cell.row}:${cell.col}`))).map((rack) => ({ kind: "rack" as const, id: rack.id })),
               ...layout.stations.filter((station) => cells.has(`${station.cell.row}:${station.cell.col}`)).map((station) => ({ kind: "station" as const, id: station.id })),
               ...layout.chargingSpots.filter((charger) => cells.has(`${charger.cells[0].row}:${charger.cells[0].col}`)).map((charger) => ({ kind: "charger" as const, id: charger.id })),
-              ...layout.parkingSpots.filter((parking) => cells.has(`${parking.cell.row}:${parking.cell.col}`)).map((parking) => ({ kind: "parking" as const, id: parking.id })),
-              ...layout.rotationZones.filter((zone) => cells.has(`${zone.cells[0].row}:${zone.cells[0].col}`)).map((zone) => ({ kind: "rotation" as const, id: zone.id }))
+              ...layout.parkingSpots.filter((parking) => cells.has(`${parking.cell.row}:${parking.cell.col}`)).map((parking) => ({ kind: "parking" as const, id: parking.id }))
             ];
             setSelection(refs);
           }

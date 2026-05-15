@@ -12,7 +12,7 @@
 - Generated layout candidate comparison drawer with sortable metrics, top-three comparison, preview, and apply workflow.
 - Candidate preview/apply UX now separates temporary preview from final apply; closing an unapplied preview restores the previous active layout.
 - Hybrid generation that starts from the current layout and fills around protected constraints.
-- Visual object placement for racks, stations, queues, chargers, parking spots, rotation zones, blocked cells, human zones, and docks.
+- Visual object placement for racks, stations, queues, chargers, parking spots, rotation-enabled cells, blocked cells, human zones, and docks.
 - Object selection, drag/drop movement, deletion, rotation, copy/paste for racks, undo, and redo.
 - Continuous paint/erase behavior for cell drawing tools.
 - Traffic direction editing for selected cells with north/south/east/west controls and one-way graph support.
@@ -48,7 +48,7 @@
 - `window.__RMFS_DEBUG__` live diagnostics API and `window.__RMFS_TEST__` dev/test state inspection hook.
 - Simulation invariant checker for robot envelope overlaps, invalid rack/storage ownership, duplicate active rack assignment, order over-fulfillment, queue overflow, invalid task references, invalid route cells, and invalid reservations.
 - Controller strategy registry with descriptions and decision traces for order, rack, station, robot, storage, charging, path planning, and traffic-control strategy decisions.
-- Resource reservation support for rotation zones, station queue slots, station service, storage locations, chargers, and parking.
+- Resource reservation support for rotation-enabled cells, station queue slots, station service, storage locations, chargers, and parking.
 - Conservative deadlock detector and recovery hook for repeated conflict pairs and robots blocked beyond configured thresholds.
 - Deterministic simulation scenario runner for non-browser regression tests.
 - Versioned layout model support for optional simulation config.
@@ -139,3 +139,29 @@
 6. Refactor `simulationEngine.ts` and `SimulationPanel.tsx` before adding WHCA-style MAPF-lite.
 7. Add MAPF planning only after the operational RMFS model remains stable across larger scenarios.
 8. Continue toward CAD/DXF import, 3D view, and cloud persistence in later passes.
+# Semantic Correction Update - 2026-05-14
+
+The active layout schema is now `0.3.0`.
+
+Completed in this pass:
+
+- Removed `ROTATION` as an active cell type.
+- Added rotation permissions as `LayoutCell` properties controlled from the Direction/Traffic properties UI.
+- Added first-class `QueueLane` records.
+- Detached queue cells from station records.
+- Updated generated Small/Large demos to create ordered directional queue lanes.
+- Updated station routing so service paths end at `station.cell`.
+- Updated rack/pod routing so pickup and drop paths end at `StorageLocation.podServiceCell`.
+- Added import migration from old rotation zones and station-owned queue cells.
+- Added validation for queue lanes, pod service cells, and rotation-enabled cells.
+- Updated E2E tests to configure rotation through the Direction tool.
+
+Verification:
+
+- `npm run build` passed.
+- `npm test -- --run` passed: 14 files, 88 tests.
+- `npm run test:e2e -- --workers=1` passed: 18 tests.
+
+Known limitation:
+
+- Experimental Simulation Mode is semantically corrected for queue, station, pod service cell, and rotation-cell workflows, but it is still not full MAPF.
