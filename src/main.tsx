@@ -7,7 +7,7 @@ import { useSimulationStore } from "./store/simulationStore";
 import { useUiStore } from "./store/uiStore";
 import { installErrorCapture } from "./debug/errorCapture";
 import { installQaSessionRecorder } from "./debug/qaSessionRecorder";
-import { installDebugGlobals } from "./debug/diagnosticsExport";
+import { createRuntimeInspectors, installDebugGlobals } from "./debug/diagnosticsExport";
 import { recordDebugEvent } from "./debug/debugStore";
 
 declare global {
@@ -16,6 +16,9 @@ declare global {
       layout: typeof useLayoutStore;
       ui: typeof useUiStore;
       simulation: typeof useSimulationStore;
+      getQueueLaneInspector?: () => unknown[];
+      getStationAdmissionTrace?: () => unknown[];
+      getWhyWaiting?: () => unknown[];
     };
   }
 }
@@ -26,7 +29,10 @@ if (debugEnabled) {
   window.__RMFS_TEST__ = {
     layout: useLayoutStore,
     ui: useUiStore,
-    simulation: useSimulationStore
+    simulation: useSimulationStore,
+    getQueueLaneInspector: () => createRuntimeInspectors(useLayoutStore.getState().history.present, useSimulationStore.getState().state).queueLanes,
+    getStationAdmissionTrace: () => createRuntimeInspectors(useLayoutStore.getState().history.present, useSimulationStore.getState().state).stationAdmission,
+    getWhyWaiting: () => createRuntimeInspectors(useLayoutStore.getState().history.present, useSimulationStore.getState().state).whyWaiting
   };
   window.__RMFS_DEBUG_RECORD__ = recordDebugEvent;
   installDebugGlobals({ layout: useLayoutStore, ui: useUiStore, simulation: useSimulationStore });

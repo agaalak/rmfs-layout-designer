@@ -80,10 +80,10 @@ Current implemented flow:
 
 1. A robot starts `IDLE`.
 2. A task is assigned and route segments are planned.
-3. The robot moves empty to a rack approach cell.
-4. The robot waits for lift time and attaches the rack.
-5. The loaded robot drives to the station queue/service area, optionally via explicit rotation-zone dwell states.
-6. The robot enters station FIFO service.
+3. The robot moves empty to the source storage location `podServiceCell`.
+4. The robot waits for lift time and attaches the rack only while on that pod service cell.
+5. The loaded robot drives through an ordered queue lane, optionally via explicit rotation-enabled-cell dwell states.
+6. The robot enters the physical `station.cell`, then station service can start.
 7. After service, a rack-storage controller chooses return home or another available storage location.
 8. The robot waits for drop time, detaches the rack, completes the task, and returns to `IDLE`.
 
@@ -130,13 +130,13 @@ The planner uses the existing layout graph, so it inherits:
 Important helpers:
 
 - `findShortestPath(layout, startCell, goalCell)`
-- `findPathToNearestRackApproach(layout, startCell, rack)`
+- `findPathToRackServiceCell(layout, startCell, rack, storageLocationId)`
 - `findPathToStationQueue(layout, startCell, station)`
-- `findNearestRotationZonePath(layout, startCell, requiredOrientation)`
+- `findNearestRotationCellPath(layout, startCell, requiredOrientation)`
 - `findReturnRackPath(layout, stationCell, rackHomeCell)`
 - `calculatePathDistanceMeters(path, grid)`
 
-Multi-cell rack pickup/dropoff uses adjacent approach cells. Rack occupied cells are not treated as ordinary road cells.
+Rack pickup/dropoff targets the storage location `podServiceCell`. Approach waypoints may remain as diagnostics, but they do not trigger lift/drop and are not used by nearest-rack scoring. Generic shortest-path routing blocks station cells as incidental pass-through nodes; task-specific station routing can still target the assigned `station.cell`.
 
 ## Reservation Table Logic
 
@@ -154,7 +154,7 @@ Implemented rules:
 - Two robots cannot reserve the same cell at the same time.
 - Two robots cannot swap edges at the same time.
 - Loaded robots reserve the carried-rack footprint cells in addition to the robot center cell.
-- Rotation zones, station queue/service slots, storage destinations, chargers, and parking spots can be represented as finite resources.
+- Rotation-enabled cells, station queue/service slots, storage destinations, chargers, and parking spots can be represented as finite resources.
 - Existing reservations for a robot can be cleared before replanning.
 - Wait steps can be inserted at the start of a path to resolve simple conflicts.
 
@@ -213,15 +213,25 @@ Visual behavior:
 
 ## Station Queue Logic
 
-Each station gets a `StationQueue` record. Robots entering a station are appended to the waiting list. If the station has no active robot, the first waiting robot begins service and receives a service end time. When service time expires, that robot leaves service and continues on its return route.
+`SimulationState.queueLaneStates` is the queue source of truth. Each `QueueLaneRuntimeState` tracks ordered occupied cells, reserved robots/tasks, and the active head-of-line robot. `StationQueue.waitingRobotIds` is retained as a derived compatibility view at the service-admission seam and should not drive controller decisions.
+
+The queue-lane lifecycle module owns:
+
+- entry reservation
+- occupancy syncing by `queueIndex`
+- head-of-line detection
+- station-entry gating
+- derived station queue views
+
+If the station has no active robot, a robot physically waiting on `station.cell` begins service and receives a service end time. Robots on queue cells do not start service. When service time expires, the active robot leaves service and continues on its return route.
 
 This is FIFO service, not a detailed workstation labor model. PICK and COMBI service paths decrement inventory and fulfill order lines. REPLENISH service paths can increment bin inventory through helper/controller code, but the UI is still pick-order focused.
 
-## Orientation And Rotation Zones
+## Orientation And Rotation Cells
 
-Station required orientation and accepted rack faces are copied into tasks. If a station orientation differs from the rack's current orientation, route planning can include paths to compatible rotation zones before the station and before the return leg.
+Station required orientation and accepted rack faces are copied into tasks. If a station orientation differs from the rack's current orientation, route planning can include paths to compatible traversable cells with `allowRotation=true` before the station and before the return leg.
 
-Current behavior: compatible rotation-zone paths create explicit `ROTATING_WITH_RACK` dwell states. Rack orientation updates at the end of pre-station and post-station rotation events. Rotation zones now attempt capacity-1 resource reservation during dwell and produce wait/conflict events if a zone is busy.
+Current behavior: compatible rotation-enabled-cell paths create explicit `ROTATING_WITH_RACK` dwell states. Rack orientation updates at the end of pre-station and post-station rotation events. Rotation cells attempt capacity-1 resource reservation by default during dwell and produce wait/conflict events if a cell is busy.
 
 ## Validation Before Simulation
 
@@ -231,8 +241,8 @@ Current behavior: compatible rotation-zone paths create explicit `ROTATING_WITH_
 - rack
 - station
 - traversable road graph
-- rack approach reachability
-- station approach reachability
+- rack pod-service-cell reachability
+- station queue/service-cell reachability
 
 Existing layout validation continues to cover overlaps, bounds, charger/parking size, footprint issues, connectivity, orientation, and face access.
 

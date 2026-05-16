@@ -12,6 +12,7 @@ Statuses: open, in progress, fixed, deferred.
 |---|---|---:|---|---|---|---|---|---|---|
 | SIM-P0-001 | Traffic control is not full MAPF | P0/P1 | deferred | Run dense robot/order scenarios | Collision/deadlock-free plans with bounded recovery | Current shortest-path + reservations can still block conservatively | `src/simulation/pathPlanner.ts`, `trafficController.ts` | Add WHCA-style rolling horizon before CBS | Scenario runner + E2E stress |
 | SIM-P1-002 | Station dispatch serialized work behind one active task | P1 | fixed | Multiple orders to one pick station | Queue capacity, not active station task count, controls dispatch | Old gate made only one robot appear to run | `simulationEngine.ts`, `stationAssignmentController.ts` | Removed station active-task gate; added queue lane runtime reservations | `logic-algorithm-fixes.test.ts` |
+| SIM-P1-005 | Station assignment read stale station queues | P1 | fixed | `shortest_queue` with live queue lanes and stale `waitingRobotIds` | Score queue lanes by occupied cells, lane reservations, and active service occupancy | Controller could prefer a busy station when `StationQueue` was stale | `stationAssignmentController.ts`, `queueLaneLifecycle.ts` | Use `queueLaneStates` as source of truth and derive legacy station queues mechanically | `stationAssignmentController.test.ts`, `queueLaneLifecycle.test.ts` |
 | SIM-P1-003 | Invariant failures should optionally pause simulation | P1 | open | Force duplicate rack assignment in debug mode | Debug mode pauses or clearly gates continuation | Invariants log but do not always stop playback | `simulationStore.ts`, `invariants.ts` | Add config flag `pauseOnInvariantViolation` | Invariant pause test |
 | SIM-P2-004 | Battery and charging lifecycle incomplete | P2 | deferred | Long simulation with chargers | Robots drain battery and choose chargers | Battery is mostly static | `robot.ts`, `chargingController.ts` | Add drain/charge policy after traffic stabilizes | Battery lifecycle tests |
 
@@ -52,6 +53,8 @@ Statuses: open, in progress, fixed, deferred.
 |---|---|---:|---|---|---|---|---|---|---|
 | PATH-P1-001 | Waypoints are derived, not persisted/editable | P1 | open | Import/export layout graph | Persisted graph/waypoint debugging | Graph is rebuilt from cells/resources | `graphBuilder.ts`, `layout.ts` | Add optional waypoint snapshot/debug export | Graph roundtrip tests |
 | PATH-P1-002 | WHCA-style planner absent | P1 | deferred | Multi-robot corridor | Rolling time-window planning | Current reservation repair is local | `pathPlanner.ts`, `trafficController.ts` | Add MAPF-lite module next pass | WHCA scenario tests |
+| PATH-P1-003 | Generic routing could use station cells as shortcuts | P1 | fixed | Shortest path across a station cell unrelated to task | Station cells are terminal service targets, not incidental pass-through nodes | Generic graph included station nodes by default | `graphBuilder.ts`, `pathPlanner.ts` | Added station routing context and blocked station cells for generic shortest path | `stationPassThroughPolicy.test.ts` |
+| PATH-P1-004 | Nearest rack scoring used approach cells | P1 | fixed | Asymmetric service-cell vs approach-cell layout | Rack scoring matches execution: route to `podServiceCell` | Rack selection still called `rackApproachNodes` | `rackSelectionController.ts`, `pathPlanner.ts` | Score `nearest_rack_with_sku` with `findPathToRackServiceCell` | `rackSelectionController.test.ts` |
 
 ## Layout Generation
 
@@ -85,6 +88,7 @@ Statuses: open, in progress, fixed, deferred.
 | ID | Title | Severity | Status | Source / Repro | Expected | Actual / Risk | Likely Files | Proposed Fix | Tests |
 |---|---|---:|---|---|---|---|---|---|---|
 | DBG-P1-001 | Need live diagnostics while user tests | P1 | fixed | User reports issue while app running | Export actions/errors/state/simulation snapshot | Added Debug / QA panel and globals | `src/debug/*`, `DebugPanel.tsx` | Iterate from real reports | Debug E2E |
+| DBG-P1-003 | Need queue/service decision inspection | P1 | fixed | User reports only one robot runs or station queue stalls | Debug panel explains queue occupancy, station admission, wait reason, and reservations | Previous debug export had raw state but no focused queue inspector | `diagnosticsExport.ts`, `DebugPanel.tsx`, `main.tsx` | Added queue-lane inspector, station admission trace, why-waiting trace, controller trace, reservation snippet globals | Debug panel smoke + unit diagnostics follow-up |
 | DBG-P2-002 | Issue report screenshot capture is not yet embedded | P2 | open | Export issue report | Optional current screenshot included | Report exports state/logs but not screenshot binary | `diagnosticsExport.ts` | Add canvas/browser screenshot hook later | Report test |
 
 ## Modularity / Architecture
@@ -92,6 +96,7 @@ Statuses: open, in progress, fixed, deferred.
 | ID | Title | Severity | Status | Source / Repro | Expected | Actual / Risk | Likely Files | Proposed Fix | Tests |
 |---|---|---:|---|---|---|---|---|---|---|
 | ARCH-P1-001 | `simulationEngine.ts` has too many responsibilities | P1 | open | Architecture review | Engine orchestrates modules; modules own behavior | File mixes assignment, route execution, service, metrics | `simulationEngine.ts` | Split into lifecycle modules | Existing simulation tests |
+| ARCH-P1-003 | Queue/station lifecycle lacked isolated module | P1 | fixed | Inspect assignment/service code | Queue-lane lifecycle is testable independently | Queue logic lived inline in `simulationEngine.ts` | `simulationEngine.ts`, `src/simulation/lifecycle/*` | Added queue, station service, rack, and robot task lifecycle helpers | `queueLaneLifecycle.test.ts`, `rackLifecycle.test.ts` |
 | ARCH-P1-002 | `SimulationPanel.tsx` is too broad | P1 | open | Architecture review | Focused tab components | Panel contains setup/orders/controllers/tasks/events | `SimulationPanel.tsx` | Split panel tabs | Component tests |
 
 ## Import / Export / Schema

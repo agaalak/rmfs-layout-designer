@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5174 --strictPort",
     "build": "tsc -b && vite build",
+    "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:smoke": "playwright test --grep @smoke",
+    "ci:test": "npm run typecheck && npm test -- --run && npm run test:e2e -- --workers=1",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {

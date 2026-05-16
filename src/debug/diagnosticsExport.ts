@@ -1,8 +1,11 @@
 import type { useLayoutStore } from "../store/layoutStore";
 import type { useSimulationStore } from "../store/simulationStore";
 import type { useUiStore } from "../store/uiStore";
+import type { WarehouseLayout } from "../models/layout";
+import type { SimulationState } from "../models/simulation";
 import type { DebugEvent } from "./debugEvents";
 import { useDebugStore } from "./debugStore";
+import { cellKey } from "../utils/gridMath";
 
 export interface DiagnosticsBundle {
   generatedAt: string;
@@ -17,6 +20,124 @@ export interface DiagnosticsBundle {
     performanceSamples: unknown[];
     invariantViolationCount: number;
   };
+  runtimeInspectors: RuntimeInspectors;
+}
+
+export interface RuntimeInspectors {
+  queueLanes: Array<{
+    queueLaneId: string;
+    stationId: string;
+    cells: Array<{ queueIndex: number; cell: string; robotId?: string; taskId?: string }>;
+    reservedRobotIds: string[];
+    reservedTaskIds: string[];
+    activeHeadRobotId?: string;
+  }>;
+  stationAdmission: Array<{
+    stationId: string;
+    stationCell: string;
+    activeRobotId?: string;
+    activeRackId?: string;
+    serviceEndTimeSec?: number;
+    readyRobotIds: string[];
+    queueLaneIds: string[];
+  }>;
+  controllerDecisionTrace: unknown[];
+  whyWaiting: Array<{
+    robotId: string;
+    state: string;
+    taskId?: string;
+    waitingReason?: string;
+    conflictTarget?: string;
+    queueLaneId?: string;
+    stationId?: string;
+    activeStationRobotId?: string;
+  }>;
+  reservationTimeline: Array<{
+    timeStep: number;
+    robotId?: string;
+    taskId?: string;
+    resourceId?: string;
+    kind?: string;
+    cells?: string[];
+  }>;
+}
+
+export function createRuntimeInspectors(layout: WarehouseLayout, simulation: SimulationState): RuntimeInspectors {
+  const queueLanes = (layout.queueLanes ?? []).map((lane) => {
+    const runtime = simulation.queueLaneStates[lane.queueLaneId];
+    const cells = (runtime?.occupiedCells ?? lane.cells.map((item) => ({ queueIndex: item.queueIndex, cell: item.cell }))).map((cell) => ({
+      queueIndex: cell.queueIndex,
+      cell: cellKey(cell.cell),
+      robotId: cell.robotId,
+      taskId: cell.taskId
+    }));
+    return {
+      queueLaneId: lane.queueLaneId,
+      stationId: lane.stationId,
+      cells,
+      reservedRobotIds: runtime?.reservedRobotIds ?? [],
+      reservedTaskIds: runtime?.reservedTaskIds ?? [],
+      activeHeadRobotId: runtime?.activeHeadRobotId
+    };
+  });
+
+  const stationAdmission = layout.stations.map((station) => {
+    const runtime = simulation.stationStates[station.id];
+    const queue = simulation.stationQueues.find((item) => item.stationId === station.id);
+    return {
+      stationId: station.id,
+      stationCell: cellKey(station.cell),
+      activeRobotId: runtime?.activeRobotId ?? queue?.activeRobotId,
+      activeRackId: runtime?.activeRackId,
+      serviceEndTimeSec: runtime?.serviceEndTimeSec ?? queue?.serviceEndTimeSec,
+      readyRobotIds: simulation.robots
+        .filter((robot) => {
+          const task = robot.assignedTaskId ? simulation.tasks.find((item) => item.taskId === robot.assignedTaskId) : undefined;
+          return robot.state === "QUEUING_AT_STATION" && task?.stationId === station.id && cellKey(robot.currentCell) === cellKey(station.cell);
+        })
+        .map((robot) => robot.robotId),
+      queueLaneIds: station.queueLaneIds
+    };
+  });
+
+  const whyWaiting = simulation.robots
+    .filter((robot) => robot.waitingReason || robot.blockedReason || robot.conflictTarget)
+    .map((robot) => {
+      const task = robot.assignedTaskId ? simulation.tasks.find((item) => item.taskId === robot.assignedTaskId) : undefined;
+      const stationId = task?.stationId;
+      return {
+        robotId: robot.robotId,
+        state: robot.state,
+        taskId: robot.assignedTaskId,
+        waitingReason: robot.waitingReason ?? robot.blockedReason,
+        conflictTarget: robot.conflictTarget,
+        queueLaneId: task?.queueLaneId,
+        stationId,
+        activeStationRobotId: stationId ? simulation.stationStates[stationId]?.activeRobotId ?? simulation.stationQueues.find((queue) => queue.stationId === stationId)?.activeRobotId : undefined
+      };
+    });
+
+  const reservationTimeline = Object.entries(simulation.reservationTable.reservedResources ?? {})
+    .flatMap(([timeStep, records]) =>
+      records.map((record) => ({
+        timeStep: Number(timeStep),
+        robotId: record.robotId,
+        taskId: record.taskId,
+        resourceId: record.resourceId,
+        kind: record.kind,
+        cells: (record.cells ?? (record.cell ? [record.cell] : [])).map(cellKey)
+      }))
+    )
+    .sort((a, b) => a.timeStep - b.timeStep)
+    .slice(-80);
+
+  return {
+    queueLanes,
+    stationAdmission,
+    controllerDecisionTrace: simulation.eventLog.filter((event) => event.entityType === "controller" || event.details?.controller).slice(-80),
+    whyWaiting,
+    reservationTimeline
+  };
 }
 
 export function createDiagnosticsBundle(stores: {
@@ -30,7 +151,7 @@ export function createDiagnosticsBundle(stores: {
   const uiState = stores.ui.getState();
   return {
     generatedAt: new Date().toISOString(),
-    appVersion: "0.2.0",
+    appVersion: "0.1.0",
     userAgent: typeof navigator !== "undefined" ? navigator.userAgent : undefined,
     location: typeof window !== "undefined" ? window.location.href : undefined,
     layout: {
@@ -57,7 +178,8 @@ export function createDiagnosticsBundle(stores: {
       events: debug.events,
       performanceSamples: debug.performanceSamples,
       invariantViolationCount: debug.invariantViolationCount
-    }
+    },
+    runtimeInspectors: createRuntimeInspectors(layoutState.history.present, simulationState.state)
   };
 }
 
@@ -131,6 +253,11 @@ export function installDebugGlobals(stores: {
     getRecentActions: () => useDebugStore.getState().events.filter((event) => event.category === "user_action").slice(-100),
     getSimulationSnapshot: () => stores.simulation.getState().state,
     getLayoutSnapshot: () => stores.layout.getState().history.present,
+    getQueueLaneInspector: () => createRuntimeInspectors(stores.layout.getState().history.present, stores.simulation.getState().state).queueLanes,
+    getStationAdmissionTrace: () => createRuntimeInspectors(stores.layout.getState().history.present, stores.simulation.getState().state).stationAdmission,
+    getControllerDecisionTrace: () => createRuntimeInspectors(stores.layout.getState().history.present, stores.simulation.getState().state).controllerDecisionTrace,
+    getReservationTimeline: () => createRuntimeInspectors(stores.layout.getState().history.present, stores.simulation.getState().state).reservationTimeline,
+    getWhyWaiting: () => createRuntimeInspectors(stores.layout.getState().history.present, stores.simulation.getState().state).whyWaiting,
     exportDiagnostics: () => JSON.stringify(createDiagnosticsBundle(stores), null, 2),
     clearDiagnostics: () => useDebugStore.getState().clearDiagnostics(),
     enableVerboseMode: () => useDebugStore.getState().enableVerboseMode(),
@@ -146,6 +273,11 @@ declare global {
       getRecentActions: () => unknown[];
       getSimulationSnapshot: () => unknown;
       getLayoutSnapshot: () => unknown;
+      getQueueLaneInspector: () => unknown[];
+      getStationAdmissionTrace: () => unknown[];
+      getControllerDecisionTrace: () => unknown[];
+      getReservationTimeline: () => unknown[];
+      getWhyWaiting: () => unknown[];
       exportDiagnostics: () => string;
       clearDiagnostics: () => void;
       enableVerboseMode: () => void;

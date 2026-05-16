@@ -21,7 +21,7 @@ export function calculatePathDistanceMeters(path: GridCell[], grid: WarehouseLay
 }
 
 export function findShortestPath(layout: WarehouseLayout, startCell: GridCell, goalCell: GridCell): GridCell[] {
-  const graph = buildRoadGraph(layout);
+  const graph = buildRoadGraph(layout, { stationMode: "blocked" });
   const result = shortestPathBetweenSets(graph, [cellKey(startCell)], [cellKey(goalCell)]);
   return nodesToCells(result?.path);
 }

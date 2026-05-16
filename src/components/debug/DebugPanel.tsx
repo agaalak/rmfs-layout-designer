@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { AlertTriangle, Bug, Download, X } from "lucide-react";
-import { createDiagnosticsBundle, createIssueReport, issueReportMarkdown } from "../../debug/diagnosticsExport";
+import { createDiagnosticsBundle, createIssueReport, createRuntimeInspectors, issueReportMarkdown } from "../../debug/diagnosticsExport";
 import { useDebugStore } from "../../debug/debugStore";
 import { downloadTextFile } from "../../importExport/exportLayout";
 import { useLayoutStore } from "../../store/layoutStore";
@@ -20,6 +20,9 @@ export function DebugPanel() {
   const [expectedBehavior, setExpectedBehavior] = useState("");
   const [actualBehavior, setActualBehavior] = useState("");
   const stores = useMemo(() => ({ layout: useLayoutStore, simulation: useSimulationStore, ui: useUiStore }), []);
+  const layout = useLayoutStore((state) => state.history.present);
+  const simulation = useSimulationStore((state) => state.state);
+  const inspectors = useMemo(() => createRuntimeInspectors(layout, simulation), [layout, simulation]);
   const errors = events.filter((event) => event.severity === "error").slice(-12);
   const warnings = events.filter((event) => event.severity === "warning").slice(-12);
   const simulationEvents = events.filter((event) => ["simulation", "traffic", "controller", "invariant"].includes(event.category)).slice(-40);
@@ -82,6 +85,46 @@ export function DebugPanel() {
             <div key={event.eventId} className={`rounded border p-2 text-xs ${event.severity === "error" ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"}`}>
               <div className="font-semibold">{event.severity.toUpperCase()} - {event.source ?? event.category}</div>
               <div>{event.message}</div>
+            </div>
+          ))}
+        </section>
+
+        <section className="mt-3 grid gap-2">
+          <div className="panel-title">Queue / Station Runtime</div>
+          {inspectors.queueLanes.length === 0 ? <div className="empty-state">No queue lanes in the current layout.</div> : null}
+          {inspectors.queueLanes.slice(0, 8).map((lane) => (
+            <div key={lane.queueLaneId} className="rounded border border-border bg-teal-50 p-2 text-xs">
+              <div className="font-semibold">{lane.queueLaneId} to {lane.stationId}</div>
+              <div className="text-muted-foreground">
+                reserved {lane.reservedTaskIds.length} / occupied {lane.cells.filter((cell) => cell.robotId).length}
+                {lane.activeHeadRobotId ? ` / head ${lane.activeHeadRobotId}` : ""}
+              </div>
+              <div className="mt-1 truncate">
+                {lane.cells.map((cell) => `${cell.queueIndex}:${cell.cell}${cell.robotId ? `=${cell.robotId}` : ""}`).join(" | ")}
+              </div>
+            </div>
+          ))}
+          {inspectors.stationAdmission.slice(0, 8).map((station) => (
+            <div key={station.stationId} className="rounded border border-border p-2 text-xs">
+              <div className="font-semibold">{station.stationId} service cell {station.stationCell}</div>
+              <div className="text-muted-foreground">active {station.activeRobotId ?? "none"} / ready {station.readyRobotIds.join(", ") || "none"}</div>
+            </div>
+          ))}
+        </section>
+
+        <section className="mt-3 grid gap-2">
+          <div className="panel-title">Why Waiting / Reservations</div>
+          {inspectors.whyWaiting.length === 0 ? <div className="empty-state">No robots are currently waiting or blocked.</div> : null}
+          {inspectors.whyWaiting.slice(0, 8).map((item) => (
+            <div key={item.robotId} className="rounded border border-amber-200 bg-amber-50 p-2 text-xs">
+              <div className="font-semibold">{item.robotId} - {item.state}</div>
+              <div>{item.waitingReason ?? "Waiting/block reason unavailable"}</div>
+              <div className="text-muted-foreground">task {item.taskId ?? "n/a"} / station {item.stationId ?? "n/a"} / conflict {item.conflictTarget ?? item.activeStationRobotId ?? "n/a"}</div>
+            </div>
+          ))}
+          {inspectors.reservationTimeline.slice(-6).map((item) => (
+            <div key={`${item.timeStep}_${item.resourceId}_${item.robotId}_${item.taskId}`} className="rounded border border-border p-2 text-xs">
+              <span className="font-semibold">t{item.timeStep}</span> {item.kind ?? "reservation"} {item.resourceId ?? item.robotId ?? item.taskId}
             </div>
           ))}
         </section>

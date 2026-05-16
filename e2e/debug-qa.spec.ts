@@ -33,6 +33,23 @@ test("debug diagnostics records user actions and simulation events", async ({ pa
   expect(snapshot.simulationEvents).toBeGreaterThan(0);
 });
 
+test("debug queue inspector exposes queue and station admission state", async ({ page }) => {
+  await page.getByRole("button", { name: /Simulate workflow/ }).click();
+  await page.getByRole("button", { name: "Initialize" }).click();
+  await page.getByRole("button", { name: "Generate tasks" }).click();
+  const inspectors = await page.evaluate(() => ({
+    queues: window.__RMFS_DEBUG__?.getQueueLaneInspector?.() ?? [],
+    stations: window.__RMFS_DEBUG__?.getStationAdmissionTrace?.() ?? [],
+    waiting: window.__RMFS_TEST__?.getWhyWaiting?.() ?? []
+  }));
+  expect(inspectors.queues.length).toBeGreaterThan(0);
+  expect(inspectors.stations.length).toBeGreaterThan(0);
+  expect(Array.isArray(inspectors.waiting)).toBe(true);
+  await page.keyboard.press("Control+Shift+D");
+  await expect(page.getByTestId("debug-panel")).toBeVisible();
+  await expect(page.getByText("Queue / Station Runtime")).toBeVisible();
+});
+
 test("issue reporter downloads a JSON report", async ({ page }) => {
   await page.keyboard.press("Control+Shift+D");
   await expect(page.getByTestId("debug-panel")).toBeVisible();

@@ -86,8 +86,8 @@ Invariants now flag:
 Commands run:
 
 - `npm run build`: passed
-- `npm test -- --run`: passed, 15 files / 94 tests
-- `npm run test:e2e -- --workers=1`: passed, 18 tests
+- `npm test -- --run`: passed, 20 files / 101 tests after the queue-lane-first controller alignment tests were added
+- `npm run test:e2e -- --workers=1`: passed, 19 tests
 
 Focused tests added:
 
@@ -120,6 +120,46 @@ Fixes added:
 - Loaded robots now hold at queue head when the station service cell is occupied.
 - Collision rollback now recenters the rolled-back robot on its previous safe cell.
 - Regression tests cover both behaviors.
+
+## 2026-05-16 Queue-Lane-First Controller Alignment
+
+The latest alignment pass made queue-lane runtime state the single source of truth for station queue decisions.
+
+Fixes added:
+
+- `StationQueue.waitingRobotIds` is derived from runtime state at the station-service seam instead of being a controller input.
+- `shortest_queue` station assignment scores live queue-lane occupied cells, lane reservations, and active service occupancy.
+- Rack selection by nearest SKU rack scores route cost to `StorageLocation.podServiceCell`.
+- Generic shortest-path routing blocks station cells as incidental pass-through nodes.
+- Debug / QA exposes queue-lane inspector, station admission trace, why-waiting trace, controller decision trace, and reservation snippets.
+
+```mermaid
+stateDiagram-v2
+  [*] --> ReservedQueueSlot
+  ReservedQueueSlot --> EnteringLane: robot reaches entry
+  EnteringLane --> OccupyingQueueCell
+  OccupyingQueueCell --> HeadOfLine: reaches highest queueIndex
+  HeadOfLine --> WaitingForStation: station.cell occupied
+  WaitingForStation --> EnteringStation: station.cell free
+  HeadOfLine --> EnteringStation: station.cell free
+  EnteringStation --> ServiceReady: robot.currentCell == station.cell
+  ServiceReady --> Servicing
+  Servicing --> ExitingStation: service timer complete
+  ExitingStation --> [*]
+```
+
+```mermaid
+flowchart TD
+  Order["Order line / SKU demand"] --> RackSelect["RackSelectionController"]
+  RackSelect --> RackPath["Score path to storageLocation.podServiceCell"]
+  RackPath --> StationSelect["StationAssignmentController"]
+  StationSelect --> QueueScore["Score queueLaneStates + reservations + active service"]
+  QueueScore --> RobotAssign["RobotAssignmentController"]
+  RobotAssign --> Pickup["Travel to podServiceCell and lift"]
+  Pickup --> Queue["Move through ordered queue lane"]
+  Queue --> Station["Enter station.cell and service"]
+  Station --> Return["Return/drop at destination podServiceCell"]
+```
 
 ## Next Recommended Engineering Step
 

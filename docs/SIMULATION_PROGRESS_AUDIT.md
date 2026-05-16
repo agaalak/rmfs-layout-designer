@@ -6,7 +6,7 @@ Date: 2026-05-13
 
 - `npm install`: passed, 0 vulnerabilities.
 - `npm run build`: passed.
-- Build note: Vite still reports the existing large single-bundle warning for the generated JavaScript chunk. This is a performance/code-splitting warning, not a TypeScript or runtime failure.
+- Build note: later manual chunking split React, canvas, simulation, analytics, and generation code. Current builds do not emit the previous large single-bundle warning.
 
 ## 2. Test Status
 
@@ -40,7 +40,7 @@ Date: 2026-05-13
 - Added simulation models for robots, tasks, route plans, station queues, reservation snapshots, event logs, metrics, and simulation config.
 - Added robot spawning from parking spots first, charging spots second, then perimeter road cells.
 - Added task generation for random nearest-station tasks, HOT/WARM/COLD weighted tasks, and manual rack-to-station tasks.
-- Added shortest-path planning over the existing layout graph with support for one-way/two-way traffic, blocked cells, rack approach cells, station queue/service cells, rotation-zone detours, and rack return paths.
+- Added shortest-path planning over the existing layout graph with support for one-way/two-way traffic, blocked cells, storage `podServiceCell` pickup/drop targets, ordered queue lanes into `station.cell`, rotation-enabled-cell detours, and rack return paths.
 - Added a basic time-expanded reservation table that blocks same-cell and edge-swap conflicts and can insert wait steps.
 - Added a deterministic step-based simulation engine with smooth robot movement, loaded/unloaded speed handling, lift/drop/service dwell timing, station FIFO queues, rack carry/drop behavior, task completion, metrics, and event logging.
 - Added visual playback layers for robots, robot yaw arrows, carried racks, planned paths, reservations, and station queue occupancy.
@@ -50,12 +50,13 @@ Date: 2026-05-13
 - Extended the layout model to allow optional simulation config data.
 - Updated README and implementation status documentation.
 - Created `docs/SIMULATION_ARCHITECTURE.md`.
+- Later semantic-alignment passes removed station-owned queue semantics, moved rotation to a traversable-cell property, made queue-lane runtime state the source of truth for station assignment/admission, and blocked station cells as generic pass-through shortcuts.
 
 ## 7. Known Simulator Limitations
 
 - The traffic system is reservation-based and practical, but it is not full MAPF, CBS, or WHCA*.
 - The reservation table prevents obvious same-cell and edge-swap conflicts but does not prove global deadlock freedom.
-- Loaded robots primarily reserve their robot cell; a full carried-rack swept envelope reservation model is still future work.
-- Rotation-zone routing exists, but explicit animated rack-rotation dwell/control is still a later refinement.
+- Loaded robots reserve carried rack grid envelopes, but continuous swept-envelope geometry is still future work.
+- Rotation-enabled-cell routing and dwell exists, but it is still a simple cell-resource reservation rather than a full scheduler.
 - Battery drain, charger assignment policy, maintenance workflows, and detailed station labor/service logic are intentionally basic.
 - This remains a 2D simulator foundation, not the final 3D/RTS-style simulator.

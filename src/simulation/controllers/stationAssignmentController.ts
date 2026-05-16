@@ -1,7 +1,8 @@
 import type { WarehouseLayout } from "../../models/layout";
 import type { Rack } from "../../models/rack";
 import type { Station } from "../../models/station";
-import type { StationAssignmentStrategy, StationQueue } from "../../models/simulation";
+import type { QueueLaneRuntimeState, StationAssignmentStrategy, StationQueue, StationRuntimeState } from "../../models/simulation";
+import { stationQueueRuntimeScore } from "../lifecycle/queueLaneLifecycle";
 import { nearestCompatibleStation } from "../pathPlanner";
 
 function compatible(layout: WarehouseLayout, rack: Rack) {
@@ -12,14 +13,21 @@ export function selectStationForRack(
   layout: WarehouseLayout,
   rack: Rack,
   strategy: StationAssignmentStrategy,
-  stationQueues: StationQueue[] = []
+  runtime: StationQueue[] | {
+    queueLaneStates?: Record<string, QueueLaneRuntimeState>;
+    stationStates?: Record<string, StationRuntimeState>;
+    stationQueues?: StationQueue[];
+  } = []
 ): Station | undefined {
   const stations = compatible(layout, rack);
+  const context = Array.isArray(runtime)
+    ? { queueLaneStates: {}, stationStates: {}, stationQueues: runtime }
+    : { queueLaneStates: runtime.queueLaneStates ?? {}, stationStates: runtime.stationStates ?? {}, stationQueues: runtime.stationQueues ?? [] };
   if (strategy === "shortest_queue") {
     return [...stations].sort((a, b) => {
-      const queueA = stationQueues.find((queue) => queue.stationId === a.id);
-      const queueB = stationQueues.find((queue) => queue.stationId === b.id);
-      return (queueA?.waitingRobotIds.length ?? 0) + (queueA?.activeRobotId ? 1 : 0) - ((queueB?.waitingRobotIds.length ?? 0) + (queueB?.activeRobotId ? 1 : 0));
+      const scoreA = stationQueueRuntimeScore(layout, context, a.id);
+      const scoreB = stationQueueRuntimeScore(layout, context, b.id);
+      return scoreA.score - scoreB.score || scoreA.queuedOrReserved - scoreB.queuedOrReserved || a.id.localeCompare(b.id);
     })[0];
   }
   if (strategy === "station_type_match") {
@@ -27,4 +35,3 @@ export function selectStationForRack(
   }
   return nearestCompatibleStation(layout, rack) ?? stations[0];
 }
-

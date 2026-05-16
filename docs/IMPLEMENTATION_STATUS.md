@@ -16,7 +16,7 @@
 - Object selection, drag/drop movement, deletion, rotation, copy/paste for racks, undo, and redo.
 - Continuous paint/erase behavior for cell drawing tools.
 - Traffic direction editing for selected cells with north/south/east/west controls and one-way graph support.
-- Rack model with faces and bin records, station model, charger model, parking model, and rotation-zone model.
+- Rack model with faces and bin records, station model, charger model, parking model, and rotation-enabled cell properties.
 - Full selected-rack bin table with editable barcode, location, SKU, quantity, dimensions, regeneration, SKU clearing, location auto-numbering, and rack-bin CSV import/export.
 - Controlled multi-cell rack footprints up to `2x2` cells with multi-cell rendering, validation, movement, rotation, graph approach nodes, and import/export roundtrip support.
 - Validation for bounds, footprint, overlap, charger size, parking size, connectivity, and orientation/face access.
@@ -35,7 +35,7 @@
 - 2D simulation data models for robots, tasks, route plans, station queues, reservation snapshots, event logs, and metrics.
 - Robot initialization from parking spots first, chargers second, then perimeter road fallback cells.
 - Random nearest-station, HOT/WARM/COLD weighted, and manual rack-to-station task creation.
-- Shortest-path simulation planning over the existing layout graph with one-way traffic, blocked-cell avoidance, rack approach-cell logic, station queue/service routing, rotation-zone detours, and return paths.
+- Shortest-path simulation planning over the existing layout graph with one-way traffic, blocked-cell avoidance, storage `podServiceCell` pickup/drop targets, ordered queue-lane routing into `station.cell`, rotation-enabled-cell detours, and return paths.
 - Time-expanded reservation table that prevents same-cell and edge-swap conflicts, reserves loaded rack envelopes, reserves finite resources, and can insert wait steps.
 - Step-based simulation engine with smooth robot pose interpolation, loaded/unloaded speeds, lift/drop/service timing, station FIFO queues, rack carry/drop behavior, task completion, metrics, and event logging.
 - Canvas simulation layers for robots, yaw arrows, carried racks, planned paths, reservation overlays, and station queue occupancy.
@@ -81,7 +81,7 @@
 - Heatmaps are analytical overlays but not yet a full multi-layer GIS-style explorer.
 - SVG export captures layout cells and core layout coloring; PNG captures the current rendered canvas.
 - Simulation Mode is explicitly Experimental. Reservation handling is useful for early playback and now includes loaded envelopes and simple resource capacity, but it is not a complete MAPF solver and does not prove deadlock freedom.
-- Rack rotation-zone routing now has explicit pre/post rotation states, dwell timing, orientation updates, and event-log entries. It is still a simple single-robot-at-zone treatment, not a full rotation-zone capacity scheduler.
+- Rack rotation-enabled-cell routing now has explicit pre/post rotation states, dwell timing, orientation updates, and event-log entries. It is still a simple single-cell resource treatment, not a full rotation scheduler.
 - Loaded-robot reservations include carried-rack footprint cells. Continuous swept-envelope geometry and kinematic turn-radius constraints are still future work.
 - Order generation uses sample SKU demand from current inventory. It is not yet a full customer-order wave/batch optimizer.
 - Replenishment support exists in inventory helpers and station service paths, but the UI still focuses mainly on pick-order generation.
@@ -124,14 +124,19 @@
 - Logic/algorithm bug-fix pass removed the station-level dispatch serializer that made only one robot appear to run.
 - Logic/algorithm bug-fix pass added queue lane runtime reservations, runtime rack rendering, nearest-available storage scoring by `podServiceCell`, and rack `currentCell` updates after drop.
 - Diagnostics follow-up fixed queue-head robots repeatedly attempting to enter an occupied station service cell and made collision rollback snap to the previous safe cell center.
+- RAWSim-O alignment follow-up extracted queue-lane runtime lifecycle helpers, made station `shortest_queue` scoring use live `queueLaneStates` plus active service occupancy instead of stale `StationQueue.waitingRobotIds`, and kept legacy station queues as a derived compatibility view.
+- RAWSim-O alignment follow-up changed nearest-rack scoring to route to `StorageLocation.podServiceCell`, matching pickup execution semantics.
+- RAWSim-O alignment follow-up added graph routing context so generic shortest-path calls block station cells as pass-through shortcuts while assigned station-service routing can still target `station.cell`.
+- RAWSim-O alignment follow-up added Debug / QA inspectors and globals for queue lanes, station admission, waiting reasons, controller decision traces, and reservation snippets.
 
 ## Test Status
 
 - `npm install`: passed, 0 vulnerabilities.
 - `npm run build`: passed. Manual chunks avoid the previous large single-bundle warning.
-- `npm test -- --run`: 15 files passed, 94 tests passed.
+- `npm run typecheck`: passed.
+- `npm test -- --run`: 20 files passed, 101 tests passed.
 - `npm run test:e2e -- e2e/debug-qa.spec.ts --workers=1`: 3 debug/QA browser tests passed.
-- `npm run test:e2e -- --workers=1`: 18 browser tests passed, 0 skipped.
+- `npm run test:e2e -- --workers=1`: 19 browser tests passed, 0 skipped.
 - Browser QA through Playwright at `http://127.0.0.1:5174/`: covered app load, Small Demo first load, manual canvas editing, object manipulation, validation/analytics, import/export, Mode B candidate apply, Hybrid lock preservation, one simple simulation cycle, always-visible canvas controls, wheel zoom, space-drag pan, workflow navigation, responsive drawers, Simulation workflow availability, and a live Small Demo simulation step with 4 active robots / 4 assigned tasks.
 
 ## Completion Plan
@@ -157,7 +162,7 @@ Completed in this pass:
 - Updated generated Small/Large demos to create ordered directional queue lanes.
 - Updated station routing so service paths end at `station.cell`.
 - Updated rack/pod routing so pickup and drop paths end at `StorageLocation.podServiceCell`.
-- Added import migration from old rotation zones and station-owned queue cells.
+- Added import migration from old rotation zones and old station-owned queue cells.
 - Added validation for queue lanes, pod service cells, and rotation-enabled cells.
 - Updated E2E tests to configure rotation through the Direction tool.
 

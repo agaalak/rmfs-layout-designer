@@ -19,6 +19,10 @@ export interface RoadGraph {
   adjacency: Map<GraphNode, GraphEdge[]>;
 }
 
+export interface RoadGraphOptions {
+  stationMode?: "terminal" | "blocked";
+}
+
 const terminalRoutingCellTypes = new Set(["PARKING", "CHARGING", "STATION"]);
 
 function waypointTypeForCell(cellType: string): WaypointType {
@@ -33,10 +37,11 @@ export function buildCellMap(layout: WarehouseLayout) {
   return new Map(layout.cells.map((cell) => [cellKey(cell), cell]));
 }
 
-export function buildRoutingWaypoints(layout: WarehouseLayout): Map<GraphNode, RmfsWaypoint> {
+export function buildRoutingWaypoints(layout: WarehouseLayout, options: RoadGraphOptions = {}): Map<GraphNode, RmfsWaypoint> {
   const waypoints = new Map<GraphNode, RmfsWaypoint>();
   for (const cell of layout.cells) {
     if (!traversableCellTypes.has(cell.cellType)) continue;
+    if (cell.cellType === "STATION" && options.stationMode === "blocked") continue;
     const waypointId = cellKey(cell);
     waypoints.set(waypointId, {
       waypointId,
@@ -55,9 +60,9 @@ export function buildRoutingWaypoints(layout: WarehouseLayout): Map<GraphNode, R
   return waypoints;
 }
 
-export function buildRoadGraph(layout: WarehouseLayout): RoadGraph {
+export function buildRoadGraph(layout: WarehouseLayout, options: RoadGraphOptions = {}): RoadGraph {
   const cellMap = buildCellMap(layout);
-  const waypoints = buildRoutingWaypoints(layout);
+  const waypoints = buildRoutingWaypoints(layout, options);
   const nodes = new Set<GraphNode>(waypoints.keys());
   const adjacency = new Map<GraphNode, GraphEdge[]>();
   const terminalConnectors = new Map<GraphNode, Direction>();

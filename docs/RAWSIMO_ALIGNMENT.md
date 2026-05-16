@@ -62,9 +62,11 @@ Current code:
 
 ### Cell
 
-A cell is physical grid geometry. It can be empty, road, blocked, human zone, dock, station area, storage area, queue, charger, parking, or rotation area.
+A cell is physical grid geometry. It can be empty, road, blocked, human zone, dock, station area, storage area, queue, charger, or parking.
 
 Cells are not racks, robots, stations, or tasks. A cell may visually host or mark an area used by one of those objects, but those resources are separate records.
+
+Rotation is not a cell type. Rotation is a property on a traversable cell (`allowRotation`, supported orientations, dwell time, and capacity) managed through traffic/direction semantics.
 
 Current code:
 
@@ -147,11 +149,11 @@ Current station data supports:
 - service side
 - accepted rack faces
 - required rack orientation
-- queue cells
+- linked queue lane IDs
 - service time
-- queue length
+- service capacity
 
-Current simulator runtime tracks active station robot/rack, queue, service timer, and completed service count. Service updates inventory for pick/replenish paths.
+Queue cells are independent ordered `QueueLane` resources. They are not embedded in `Station`, and they are not station service cells. Current simulator runtime tracks active station robot/rack, queue-lane occupancy, service timer, and completed service count. Service updates inventory for pick/replenish paths only after the robot enters `station.cell`.
 
 ### Charger And ParkingLocation
 
@@ -218,6 +220,13 @@ Current implementation:
 - `src/simulation/controllers/stationAssignmentController.ts`
 - `src/simulation/controllers/robotAssignmentController.ts`
 - `src/simulation/controllers/rackStorageController.ts`
+
+2026-05-16 alignment update:
+
+- `stationAssignmentController.ts` no longer relies on stale `StationQueue.waitingRobotIds` when the layout has queue lanes. The `shortest_queue` strategy scores live `queueLaneStates`, queue-lane reservations, and active station service occupancy.
+- `rackSelectionController.ts` scores nearest compatible racks by route cost to `StorageLocation.podServiceCell`, matching the runtime pickup rule.
+- `graphBuilder.ts` supports station routing context so generic routing can block station cells as pass-through shortcuts while assigned station-service routes can still target `station.cell`.
+- `src/simulation/lifecycle/queueLaneLifecycle.ts` now owns queue-lane reservations, occupancy syncing, head-of-line detection, station-entry gating, and compatibility derivation of `StationQueue` views.
 - `src/simulation/controllers/chargingController.ts`
 - `src/simulation/controllers/controllerRegistry.ts`
 

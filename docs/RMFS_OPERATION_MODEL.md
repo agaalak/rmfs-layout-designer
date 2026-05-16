@@ -87,7 +87,7 @@ Runtime station state tracks:
 
 - active robot
 - active rack
-- FIFO queue and queue lane runtime reservations
+- ordered queue-lane occupancy and queue lane runtime reservations
 - service end time
 - completed service count
 
@@ -96,6 +96,10 @@ PICK/COMBI service decrements inventory and fulfills order lines. REPLENISH path
 Dispatch now reserves queue lane capacity. A station can have one active service robot while additional robots are already assigned and traveling toward/reserved into its queue lane.
 
 At runtime, the queue-head robot waits on the head queue cell until the station service cell is free. This prevents a following robot from repeatedly attempting to interpolate into an occupied station cell.
+
+The runtime source of truth for waiting robots is `SimulationState.queueLaneStates`. `StationQueue.waitingRobotIds` is now treated as a derived compatibility view for service admission/export surfaces, not as a controller decision source. Station assignment `shortest_queue` uses live queue-lane occupied cells, lane reservations, and active station service occupancy.
+
+Generic routing and analytics-style shortest paths should not use station cells as incidental pass-through shortcuts. Task-specific station routing can still target `station.cell`, and service starts only once the robot physically reaches that cell.
 
 ## Controller Strategies
 
@@ -109,6 +113,8 @@ Controllers are explicit modules so future strategy comparisons can evolve witho
 - Charging: none, low battery to nearest charger.
 
 The controller registry in `src/simulation/controllers/controllerRegistry.ts` documents each strategy's stage, description, parameters, affected metrics, and limitations. Controller event-log entries include decision traces so a tester can inspect why a rack, station, robot, or storage location was selected.
+
+Nearest-rack scoring uses the same service-cell semantics as execution: the path cost is from the robot/current start to the rack storage location `podServiceCell`. Approach cells may still appear in diagnostics for humans, but they do not trigger pickup/drop or drive nearest-rack scoring.
 
 ## Rotation-Enabled Cells
 
@@ -184,6 +190,19 @@ Two runtime mismatches were fixed:
 2. Simulation rack rendering no longer uses design-time `homeCell` after initialization. Stored racks render from `rackStates` and `storageLocationStates`, so nearest-available storage reallocation is visible at the selected destination.
 
 The new focused regression tests are in `tests/logic-algorithm-fixes.test.ts`.
+
+# 2026-05-16 Queue-Lane Runtime Alignment
+
+The simulator now has a dedicated queue-lane lifecycle module:
+
+- `createQueueLaneStates`
+- `reserveQueueLaneSlot`
+- `syncQueueLaneStates`
+- `chooseQueueLaneForStation`
+- `deriveStationQueuesFromRuntime`
+- `holdRobotBeforeBlockedStationEntry`
+
+This keeps queue occupancy, queue scoring, head-of-line detection, station-entry gating, and station service readiness aligned around one runtime state. Debug exports and the Debug / QA panel now include queue-lane inspectors, station admission traces, waiting reasons, controller decision traces, and reservation snippets.
 # 2026-05-14 Queue/Station/Pod Correction
 
 Operational flow now uses these physical checkpoints:

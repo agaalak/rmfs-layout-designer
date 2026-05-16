@@ -142,6 +142,9 @@ For traffic problems, first inspect:
 - blocked robots
 - invariant violations
 - the robot's waiting reason and conflict target
+- queue-lane occupancy in the Debug / QA Queue / Station Runtime section
+- station admission state and which robot is physically ready on `station.cell`
+- reservation snippets for station/queue/resource contention
 
 ## Playwright Trace Workflow
 
@@ -184,5 +187,12 @@ For rack relocation visual issues, inspect:
 - `storageLocationStates[storageId].currentlyStoredRackId`
 - whether Simulation Mode is rendering runtime racks instead of design-time `homeCell`
 
-The Simulation panel now surfaces queue lane load and rack runtime locations directly, while `window.__RMFS_DEBUG__.getSimulationSnapshot()` includes the full queue and rack runtime state.
+The Simulation panel now surfaces queue lane load and rack runtime locations directly. The live debug APIs also include focused helpers:
 
+- `window.__RMFS_DEBUG__.getQueueLaneInspector()`
+- `window.__RMFS_DEBUG__.getStationAdmissionTrace()`
+- `window.__RMFS_DEBUG__.getWhyWaiting()`
+- `window.__RMFS_DEBUG__.getControllerDecisionTrace()`
+- `window.__RMFS_DEBUG__.getReservationTimeline()`
+
+`window.__RMFS_TEST__` exposes the queue-lane inspector, station admission trace, and why-waiting trace in dev/debug mode for Playwright and live triage.

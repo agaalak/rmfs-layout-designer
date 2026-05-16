@@ -1,24 +1,28 @@
 # Performance And Robustness Audit
 
-Date: 2026-05-14
+Date: 2026-05-16
 
 ## Commands And Current Results
 
-- `npm run build`: passed after debug/invariant additions.
-- `npm test -- --run`: passed with 13 test files and 82 tests.
-- `npm run test:e2e -- e2e/debug-qa.spec.ts --workers=1`: passed with 3 debug/QA browser tests.
-- `npm run test:e2e -- --workers=1`: passed with 18 browser tests.
+- `npm run build`: passed after debug/invariant and queue/controller alignment additions.
+- `npm run typecheck`: passed.
+- `npm test -- --run`: passed with 20 test files and 101 tests.
+- `npm run test:e2e -- e2e/debug-qa.spec.ts --workers=1`: covered by the full suite; debug/QA browser coverage now includes 4 tests.
+- `npm run test:e2e -- --workers=1`: passed with 19 browser tests.
 
 ## Initial Load And Bundle
 
 Latest observed production build shape:
 
-- `react-*.js`: about 12 kB.
+- `react-*.js`: about 320 kB.
 - `icons-*.js`: about 12 kB.
-- `canvas-*.js`: about 316 kB.
-- `index-*.js`: about 470-475 kB after debug/QA additions.
+- `canvas-*.js`: about 185 kB.
+- `simulation-*.js`: about 77 kB.
+- `analytics-*.js`: about 28 kB.
+- `generation-*.js`: about 19 kB.
+- `index-*.js`: about 200 kB after queue/controller alignment.
 
-The previous single-bundle warning remains resolved through Vite manual chunks. The main app chunk grew because debug, diagnostics, and simulation panels are currently included in the main route.
+The previous single-bundle warning remains resolved through Vite manual chunks. Simulation, analytics, generation, canvas, icon, and React/vendor code are split into named chunks.
 
 ## Render / Canvas Performance
 

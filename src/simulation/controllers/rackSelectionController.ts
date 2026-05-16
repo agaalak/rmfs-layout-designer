@@ -2,9 +2,7 @@ import type { WarehouseLayout } from "../../models/layout";
 import type { RmfsOrderLine } from "../../models/order";
 import type { Rack } from "../../models/rack";
 import type { RackRuntimeState, RackSelectionStrategy, SimulationInventoryBin } from "../../models/simulation";
-import { buildRoadGraph, rackApproachNodes } from "../../graph/graphBuilder";
-import { shortestPathBetweenSets } from "../../graph/shortestPath";
-import { cellKey } from "../../utils/gridMath";
+import { calculatePathDistanceMeters, findPathToRackServiceCell, storageLocationForRackTask } from "../pathPlanner";
 
 function availableQuantity(bin: SimulationInventoryBin) {
   return Math.max(0, bin.quantity - bin.reservedQuantity);
@@ -50,11 +48,14 @@ export function selectRackForOrderLine(
   }
 
   if (startCell) {
-    const graph = buildRoadGraph(layout);
     const best = [...candidates]
       .map((candidate) => ({
         ...candidate,
-        distance: shortestPathBetweenSets(graph, [cellKey(startCell)], rackApproachNodes(layout, candidate.rack, graph))?.distance ?? Number.MAX_SAFE_INTEGER
+        distance: (() => {
+          const storageId = candidate.rack.currentStorageLocationId ?? candidate.rack.homeStorageLocationId ?? storageLocationForRackTask(layout, candidate.rack)?.storageLocationId;
+          const path = findPathToRackServiceCell(layout, startCell, candidate.rack, storageId);
+          return path.length > 0 ? calculatePathDistanceMeters(path, layout.grid) : Number.MAX_SAFE_INTEGER;
+        })()
       }))
       .sort((a, b) => a.distance - b.distance)[0];
     return { rack: best.rack, bin: best.bin };
@@ -62,4 +63,3 @@ export function selectRackForOrderLine(
 
   return { rack: candidates[0].rack, bin: candidates[0].bin };
 }
-

@@ -50,7 +50,7 @@ Status: PARTIALLY WORKING
 
 Status: PARTIALLY WORKING
 
-- Working: stations have type, queue cells, accepted rack faces, required orientation, and max queue length in layout data. Simulator has simple FIFO station queues and service timers.
+- Working: stations have type, linked ordered queue lanes, accepted rack faces, required orientation, and service timing in layout/runtime data. Queue cells are detached from station cells. Simulator derives station service admission from queue-lane runtime state and requires the robot to enter `station.cell` before service.
 - Missing: station service does not update inventory, queue capacity is not enforced during task planning, station active rack/robot state is only implicit, and PICK/REPLENISH/COMBI behavior is not modeled.
 - Priority: P0.
 
