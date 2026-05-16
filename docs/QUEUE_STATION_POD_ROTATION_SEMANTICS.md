@@ -28,6 +28,10 @@ Simulation guards enforce:
 - `robot.currentCell` must equal `station.cell`
 - station queues advance FIFO toward the service cell
 
+Runtime dispatch now uses queue lane capacity instead of a station-wide active-task lock. A station can have one robot in service while additional robots are assigned to reserved queue lane slots. The runtime state records queue lane occupied cells, reserved robots/tasks, and the active head robot for debugging.
+
+If the head robot reaches the final queue cell while `station.cell` is occupied, it waits at the queue head. It does not continue to interpolate into the station service cell until that cell is available.
+
 ## Pod Service Cell
 
 Each `StorageLocation` has a `podServiceCell`.
@@ -40,6 +44,8 @@ The robot must enter this cell to:
 Approach cells may still be useful for diagnostics and future path planning, but they do not trigger pickup or dropoff.
 
 For 1x1 racks, `podServiceCell` is the rack cell. For larger footprints, the anchor cell is used unless explicitly changed.
+
+When a rack is dropped, simulation state updates `rackStates[rackId].currentStorageLocationId` and `rackStates[rackId].currentCell` to the destination storage `podServiceCell`. Simulation rendering uses that runtime state, not the design-time rack home cell.
 
 ## Rotation as a Cell Property
 
@@ -79,4 +85,5 @@ Coverage includes:
 - rotation routing targets `allowRotation` cells
 - export/import roundtrip preserves corrected semantics
 - E2E manual rotation configuration through the Direction tool
-
+- multi-robot dispatch through queue lane reservations
+- runtime rack rendering after nearest-available storage reallocation

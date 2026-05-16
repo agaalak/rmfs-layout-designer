@@ -85,6 +85,23 @@ export function SimulationPanel({ layout, display = "desktop" }: { layout: Wareh
   const activeResourceReservations = Object.values(state.reservationTable.reservedResources).reduce((sum, records) => sum + records.length, 0);
   const activeVertexReservations = Object.values(state.reservationTable.reservedVertices).reduce((sum, records) => sum + records.length, 0);
   const blockedRobots = state.robots.filter((robot) => ["BLOCKED", "ERROR"].includes(robot.state) || robot.waitingReason);
+  const activeRobots = state.robots.filter((robot) => !["IDLE", "PARKING", "CHARGING"].includes(robot.state));
+  const idleRobots = state.robots.filter((robot) => ["IDLE", "PARKING", "CHARGING"].includes(robot.state));
+  const pendingTasks = state.tasks.filter((task) => task.status === "PENDING");
+  const queueLaneLoads = Object.values(state.queueLaneStates).map((lane) => ({
+    lane,
+    occupied: lane.occupiedCells.filter((cell) => cell.robotId).length,
+    reserved: lane.reservedTaskIds.length,
+    capacity: Math.max(1, lane.occupiedCells.length)
+  }));
+  const rackRuntimeLocations = layout.racks.slice(0, 8).map((rack) => {
+    const rackState = state.rackStates[rack.id];
+    return {
+      rack,
+      rackState,
+      storage: rackState?.currentStorageLocationId ? layout.storageLocations.find((location) => location.storageLocationId === rackState.currentStorageLocationId) : undefined
+    };
+  });
   const importConfig = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -395,6 +412,12 @@ export function SimulationPanel({ layout, display = "desktop" }: { layout: Wareh
 
       <section className="grid gap-2 rounded-md border border-border bg-white p-2">
         <div className="panel-title">Robots & Stations</div>
+        <div className="grid grid-cols-4 gap-1 text-center text-[11px]">
+          <div className="rounded bg-slate-100 p-1"><div className="font-semibold">{activeRobots.length}</div><div>active</div></div>
+          <div className="rounded bg-slate-100 p-1"><div className="font-semibold">{idleRobots.length}</div><div>idle</div></div>
+          <div className="rounded bg-slate-100 p-1"><div className="font-semibold">{pendingTasks.length}</div><div>pending</div></div>
+          <div className="rounded bg-slate-100 p-1"><div className="font-semibold">{queueLaneLoads.reduce((sum, item) => sum + item.occupied + item.reserved, 0)}</div><div>queue</div></div>
+        </div>
         <div className="max-h-28 overflow-auto text-xs">
           {state.robots.slice(0, 8).map((robot) => (
             <div key={robot.robotId} className="grid grid-cols-[1fr_auto] gap-2 border-b border-border py-1">
@@ -409,6 +432,22 @@ export function SimulationPanel({ layout, display = "desktop" }: { layout: Wareh
             <div key={queue.stationId} className="grid grid-cols-[1fr_auto] gap-2 border-b border-border py-1">
               <span>{layout.stations.find((station) => station.id === queue.stationId)?.stationId ?? queue.stationId}</span>
               <span>{queue.activeRobotId ? `serving ${queue.activeRobotId}` : "idle"} · q{queue.waitingRobotIds.length}</span>
+            </div>
+          ))}
+        </div>
+        <div className="max-h-24 overflow-auto text-xs">
+          {queueLaneLoads.slice(0, 8).map(({ lane, occupied, reserved, capacity }) => (
+            <div key={lane.queueLaneId} className="grid grid-cols-[1fr_auto] gap-2 border-b border-border py-1">
+              <span>{lane.queueLaneId}</span>
+              <span>{occupied} occupied Â· {reserved} reserved / {capacity}</span>
+            </div>
+          ))}
+        </div>
+        <div className="max-h-28 overflow-auto text-xs">
+          {rackRuntimeLocations.map(({ rack, rackState, storage }) => (
+            <div key={rack.id} className="grid grid-cols-[1fr_auto] gap-2 border-b border-border py-1">
+              <span>{rack.rackId}</span>
+              <span>{rackState?.operationalStatus ?? rack.operationalStatus} Â· {storage?.storageLocationId ?? rackState?.currentStorageLocationId ?? "no storage"}</span>
             </div>
           ))}
         </div>

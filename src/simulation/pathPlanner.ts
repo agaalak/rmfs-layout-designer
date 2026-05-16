@@ -88,10 +88,14 @@ export function findPathToNearestRackApproach(layout: WarehouseLayout, startCell
   return findPathToRackServiceCell(layout, startCell, rack);
 }
 
-export function findPathToStationQueue(layout: WarehouseLayout, startCell: GridCell, station: Station): GridCell[] {
+export function findPathToStationQueue(layout: WarehouseLayout, startCell: GridCell, station: Station, preferredQueueLaneId?: string): GridCell[] {
   const graphLayout = layoutWithTemporaryCells(layout, [startCell]);
   const graph = buildRoadGraph(graphLayout);
-  const lanes = stationQueueLanes(layout, station);
+  const lanes = stationQueueLanes(layout, station).sort((a, b) => {
+    if (a.queueLaneId === preferredQueueLaneId) return -1;
+    if (b.queueLaneId === preferredQueueLaneId) return 1;
+    return 0;
+  });
   const candidates = lanes
     .map((lane) => {
       const pathToEntry = shortestPathBetweenSets(graph, [cellKey(startCell)], [cellKey(lane.entryCell)]);

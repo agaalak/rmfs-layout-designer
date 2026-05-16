@@ -168,6 +168,8 @@ The simulation panel can:
 
 Robots follow shortest paths over the layout graph instead of driving straight through racks or walls. The planner respects one-way/two-way traffic rules, avoids blocked cells, enters the storage `podServiceCell` for pickup/dropoff, and routes through ordered queue lanes into the station service cell. A practical time-expanded reservation table prevents obvious same-cell, edge-swap, loaded-envelope, and simple resource-capacity conflicts by inserting wait steps when possible.
 
+Recent logic fixes removed the old one-active-task-per-station dispatch gate. Multiple robots can now be assigned to the same station when queue lane capacity exists, while station service itself remains one-at-a-time unless capacity is configured higher. Simulation Mode also renders stored racks from runtime rack/storage state, so `nearest_available_storage` reallocation appears at the actual destination storage cell instead of snapping back to the design-time home.
+
 Traffic control now includes carried-rack envelopes for `1x1`, `1x2`, `2x1`, and `2x2` racks, simple capacity reservations for rotation-enabled cells and queue/service resources, conservative deadlock detection, runtime collision guards, and deterministic collision scenarios for regression tests. The runtime guard rolls back unsafe moves before visual overlap becomes accepted simulation state, logs collision-prevented warnings, and increments traffic diagnostics. It remains a practical early traffic-control layer, not a globally optimal MAPF planner.
 
 The operational chain now follows a simplified RMFS flow: order lines/SKUs -> rack selection -> station assignment -> robot assignment -> rack reservation -> empty travel -> lift -> optional rotation -> station queue/service -> inventory update -> storage/reallocation decision -> return/drop -> task/order completion.
@@ -203,7 +205,7 @@ See [docs/LIVE_QA_DEBUGGING.md](docs/LIVE_QA_DEBUGGING.md) and [docs/LIVE_TESTIN
 
 ## Import And Export
 
-Exported layout JSON includes `layoutSchemaVersion`, `appVersion`, timestamps, grid settings, cells, objects, rack faces/bins, assumptions, scoring weights, and metadata. The current schema is `0.2.0`.
+Exported layout JSON includes `layoutSchemaVersion`, `appVersion`, timestamps, grid settings, cells, objects, queue lanes, rack faces/bins, storage locations, assumptions, scoring weights, and metadata. The current schema is `0.3.0`.
 
 Import handles older layouts without a schema version by applying migration defaults. Invalid JSON returns a clear import error instead of crashing the app.
 
@@ -235,7 +237,7 @@ The current verified pass used:
 - `npm test -- --run`
 - `npm run test:e2e -- --workers=1`
 
-Current verified status: build passes, unit/component tests pass, and the Playwright E2E suite runs without global interactive skips. E2E covers app load, manual canvas editing, object manipulation, import/export, Mode B candidate apply, Hybrid lock preservation, one small simulation task cycle, always-visible view controls, wheel zoom, space-drag pan, workflow navigation, responsive drawers, and Simulation workflow availability.
+Current verified status: build passes, 15 unit/component test files pass with 94 tests, and the 18-test Playwright E2E suite runs without global interactive skips. E2E covers app load, manual canvas editing, object manipulation, import/export, Mode B candidate apply, Hybrid lock preservation, one small simulation task cycle, always-visible view controls, wheel zoom, space-drag pan, workflow navigation, responsive drawers, and Simulation workflow availability. Live Playwright smoke against the running dev server also confirmed 4 active robots and 4 assigned tasks after a Small Demo simulation step.
 
 ## Controls
 

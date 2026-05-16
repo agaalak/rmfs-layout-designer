@@ -57,6 +57,11 @@ export function checkSimulationInvariants(layout: WarehouseLayout, state: Simula
     if (rackState.carriedByRobotId && !robotIds.has(rackState.carriedByRobotId)) pushIssue(issues, "rack_state.invalid_carrier", `Rack ${rackId} references missing carrier ${rackState.carriedByRobotId}.`, [rackId, rackState.carriedByRobotId]);
     if (rackState.operationalStatus === "STORED" && !rackState.currentStorageLocationId) pushIssue(issues, "rack_state.missing_storage", `Stored rack ${rackId} has no current storage location.`, [rackId]);
     if (rackState.currentStorageLocationId && !storageIds.has(rackState.currentStorageLocationId)) pushIssue(issues, "rack_state.invalid_storage", `Rack ${rackId} references missing storage location ${rackState.currentStorageLocationId}.`, [rackId]);
+    const storage = (layout.storageLocations ?? []).find((location) => location.storageLocationId === rackState.currentStorageLocationId);
+    if (rackState.operationalStatus === "STORED" && storage && cellKey(rackState.currentCell) !== cellKey(storage.podServiceCell)) {
+      pushIssue(issues, "rack_state.runtime_cell_mismatch", `Stored rack ${rackId} runtime cell does not match storage ${storage.storageLocationId} pod service cell.`, [rackId, storage.storageLocationId]);
+    }
+    if (rackState.operationalStatus === "STORED" && rackState.carriedByRobotId) pushIssue(issues, "rack_state.stored_while_carried", `Rack ${rackId} is STORED while still referencing a carrier.`, [rackId, rackState.carriedByRobotId]);
   }
 
   const storageOccupancy = new Map<string, string[]>();
@@ -107,6 +112,52 @@ export function checkSimulationInvariants(layout: WarehouseLayout, state: Simula
     for (const robotId of queue.waitingRobotIds) {
       if (!robotIds.has(robotId)) pushIssue(issues, "station_queue.invalid_robot", `Station ${station.stationId} queue references missing robot ${robotId}.`, [station.id, robotId]);
     }
+  }
+
+  for (const [laneId, laneState] of Object.entries(state.queueLaneStates ?? {})) {
+    const lane = (layout.queueLanes ?? []).find((item) => item.queueLaneId === laneId);
+    if (!lane) {
+      pushIssue(issues, "queue_lane_state.invalid_lane", `Queue lane runtime state references missing lane ${laneId}.`, [laneId]);
+      continue;
+    }
+    const occupiedRobotIds = laneState.occupiedCells.map((cell) => cell.robotId).filter(Boolean) as string[];
+    if (new Set(occupiedRobotIds).size !== occupiedRobotIds.length) pushIssue(issues, "queue_lane.duplicate_robot", `Queue lane ${laneId} contains a robot more than once.`, [laneId, ...occupiedRobotIds]);
+    const occupiedKeys = laneState.occupiedCells.filter((cell) => cell.robotId).map((cell) => cellKey(cell.cell));
+    if (new Set(occupiedKeys).size !== occupiedKeys.length) pushIssue(issues, "queue_lane.duplicate_cell", `Queue lane ${laneId} has duplicate occupied cells.`, [laneId]);
+    const expectedCapacity = Math.max(1, lane.cells.length);
+    if (laneState.occupiedCells.filter((cell) => cell.robotId).length + laneState.reservedTaskIds.length > expectedCapacity) {
+      pushIssue(issues, "queue_lane.capacity_exceeded", `Queue lane ${laneId} reservations exceed lane capacity.`, [laneId]);
+    }
+  }
+
+  const serviceRobotsByStation = new Map<string, string[]>();
+  for (const robot of state.robots) {
+    const task = robot.assignedTaskId ? state.tasks.find((item) => item.taskId === robot.assignedTaskId) : undefined;
+    const station = task?.stationId ? layout.stations.find((item) => item.id === task.stationId) : undefined;
+    if (robot.state === "SERVICING_AT_STATION" && station) {
+      if (cellKey(robot.currentCell) !== cellKey(station.cell)) {
+        pushIssue(issues, "station.service_off_cell", `${robot.robotId} is servicing before entering station cell ${station.cell.row},${station.cell.col}.`, [robot.robotId, station.id]);
+      }
+      serviceRobotsByStation.set(station.id, [...(serviceRobotsByStation.get(station.id) ?? []), robot.robotId]);
+    }
+    if (robot.state === "LIFTING_RACK" && task) {
+      const rack = layout.racks.find((item) => item.id === task.rackId);
+      const storage = rack ? (layout.storageLocations ?? []).find((location) => location.storageLocationId === (task.sourceStorageLocationId ?? rack.currentStorageLocationId ?? rack.homeStorageLocationId)) : undefined;
+      if (storage && cellKey(robot.currentCell) !== cellKey(storage.podServiceCell)) {
+        pushIssue(issues, "rack.lift_off_pod_service_cell", `${robot.robotId} is lifting rack away from pod service cell ${storage.podServiceCell.row},${storage.podServiceCell.col}.`, [robot.robotId, task.rackId]);
+      }
+    }
+    if (robot.state === "DROPPING_RACK" && task) {
+      const storage = (layout.storageLocations ?? []).find((location) => location.storageLocationId === task.destinationStorageLocationId);
+      if (storage && cellKey(robot.currentCell) !== cellKey(storage.podServiceCell)) {
+        pushIssue(issues, "rack.drop_off_pod_service_cell", `${robot.robotId} is dropping rack away from destination pod service cell ${storage.podServiceCell.row},${storage.podServiceCell.col}.`, [robot.robotId, task.rackId]);
+      }
+    }
+  }
+  for (const [stationId, robotList] of serviceRobotsByStation) {
+    const station = layout.stations.find((item) => item.id === stationId);
+    const capacity = Math.max(1, station?.capacity ?? 1);
+    if (robotList.length > capacity) pushIssue(issues, "station.service_capacity_exceeded", `Station ${stationId} has more servicing robots than service capacity.`, [stationId, ...robotList]);
   }
 
   for (const bucket of [state.reservationTable.reservedVertices, state.reservationTable.reservedEdges, state.reservationTable.reservedResources ?? {}]) {

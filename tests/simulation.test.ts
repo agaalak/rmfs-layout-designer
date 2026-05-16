@@ -136,6 +136,7 @@ describe("2D simulation foundation", () => {
 
     layout.cells = layout.cells.filter((cell) => !(cell.row === 5 && cell.col === 6));
     layout.racks[1].homeCell = { row: 5, col: 6 };
+    state.rackStates[layout.racks[1].id] = { ...state.rackStates[layout.racks[1].id], currentCell: { row: 5, col: 6 } };
     expect(envelopeOverlapsStaticRacks(layout, state, envelope, rack.id)[0].rackId).toBe(layout.racks[1].id);
   });
 

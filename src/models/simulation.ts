@@ -64,6 +64,7 @@ export interface SimulationConfig {
   deadlockRecoveryPolicy: DeadlockRecoveryPolicy;
   reservationHorizonSec: number;
   showLoadedEnvelope: boolean;
+  updateRackHomeAfterReallocation: boolean;
 }
 
 export interface StationQueue {
@@ -71,6 +72,22 @@ export interface StationQueue {
   waitingRobotIds: string[];
   activeRobotId?: string;
   serviceEndTimeSec?: number;
+}
+
+export interface QueueLaneRuntimeCell {
+  queueIndex: number;
+  cell: GridCell;
+  robotId?: string;
+  taskId?: string;
+}
+
+export interface QueueLaneRuntimeState {
+  queueLaneId: string;
+  stationId: string;
+  occupiedCells: QueueLaneRuntimeCell[];
+  reservedRobotIds: string[];
+  reservedTaskIds: string[];
+  activeHeadRobotId?: string;
 }
 
 export interface ReservationRecord {
@@ -197,6 +214,7 @@ export interface SimulationState {
   failedTasks: SimulationTask[];
   reservationTable: ReservationTableSnapshot;
   stationQueues: StationQueue[];
+  queueLaneStates: Record<string, QueueLaneRuntimeState>;
   eventLog: SimulationEvent[];
   trafficDiagnostics: TrafficDiagnostics;
   metrics: SimulationMetrics;
@@ -251,7 +269,8 @@ export const defaultSimulationConfig: SimulationConfig = {
   deadlockDetectionEnabled: true,
   deadlockRecoveryPolicy: "replan",
   reservationHorizonSec: 60,
-  showLoadedEnvelope: false
+  showLoadedEnvelope: false,
+  updateRackHomeAfterReallocation: false
 };
 
 export const emptySimulationMetrics: SimulationMetrics = {

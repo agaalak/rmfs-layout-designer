@@ -1,7 +1,7 @@
 import { Arrow, Circle, Group, Rect, Text } from "react-konva";
 import type { WarehouseLayout } from "../../models/layout";
 import type { SimulationState } from "../../models/simulation";
-import { robotCarriedRackOffsets } from "../../simulation/simulationEngine";
+import { getCarriedRackFootprintOffsets } from "../../simulation/collisionEnvelope";
 
 export function RobotLayer({
   layout,
@@ -21,7 +21,8 @@ export function RobotLayer({
       {simulation.robots.map((robot) => {
         const x = robot.pose.x * cellSize;
         const y = robot.pose.y * cellSize;
-        const carriedOffsets = robot.carryingRackId ? robotCarriedRackOffsets(layout, robot) : [];
+        const carriedRack = robot.carryingRackId ? layout.racks.find((rack) => rack.id === robot.carryingRackId) : undefined;
+        const carriedOffsets = carriedRack ? getCarriedRackFootprintOffsets(layout, carriedRack, simulation.rackStates[carriedRack.id]?.currentOrientationDeg ?? carriedRack.currentOrientationDeg) : [];
         return (
           <Group key={robot.robotId} x={x} y={y} listening={false}>
             {robot.carryingRackId

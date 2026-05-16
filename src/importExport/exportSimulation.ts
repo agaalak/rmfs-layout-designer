@@ -76,7 +76,8 @@ export function importSimulationConfigJson(text: string): { config?: SimulationC
     "collisionCheckingEnabled",
     "priorityAgingEnabled",
     "deadlockDetectionEnabled",
-    "showLoadedEnvelope"
+    "showLoadedEnvelope",
+    "updateRackHomeAfterReallocation"
   ];
 
   for (const key of numericKeys) {

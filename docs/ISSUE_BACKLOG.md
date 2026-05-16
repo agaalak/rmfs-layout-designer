@@ -11,7 +11,7 @@ Statuses: open, in progress, fixed, deferred.
 | ID | Title | Severity | Status | Source / Repro | Expected | Actual / Risk | Likely Files | Proposed Fix | Tests |
 |---|---|---:|---|---|---|---|---|---|---|
 | SIM-P0-001 | Traffic control is not full MAPF | P0/P1 | deferred | Run dense robot/order scenarios | Collision/deadlock-free plans with bounded recovery | Current shortest-path + reservations can still block conservatively | `src/simulation/pathPlanner.ts`, `trafficController.ts` | Add WHCA-style rolling horizon before CBS | Scenario runner + E2E stress |
-| SIM-P1-002 | Station dispatch is conservative | P1 | open | Multiple orders to one pick station | Queue capacity predicted without starving valid work | Dispatch favors safety and may underuse station queues | `simulationEngine.ts`, `stationAssignmentController.ts` | Queue-aware station reservation horizon | Queue saturation unit/E2E |
+| SIM-P1-002 | Station dispatch serialized work behind one active task | P1 | fixed | Multiple orders to one pick station | Queue capacity, not active station task count, controls dispatch | Old gate made only one robot appear to run | `simulationEngine.ts`, `stationAssignmentController.ts` | Removed station active-task gate; added queue lane runtime reservations | `logic-algorithm-fixes.test.ts` |
 | SIM-P1-003 | Invariant failures should optionally pause simulation | P1 | open | Force duplicate rack assignment in debug mode | Debug mode pauses or clearly gates continuation | Invariants log but do not always stop playback | `simulationStore.ts`, `invariants.ts` | Add config flag `pauseOnInvariantViolation` | Invariant pause test |
 | SIM-P2-004 | Battery and charging lifecycle incomplete | P2 | deferred | Long simulation with chargers | Robots drain battery and choose chargers | Battery is mostly static | `robot.ts`, `chargingController.ts` | Add drain/charge policy after traffic stabilizes | Battery lifecycle tests |
 
@@ -28,7 +28,8 @@ Statuses: open, in progress, fixed, deferred.
 | ID | Title | Severity | Status | Source / Repro | Expected | Actual / Risk | Likely Files | Proposed Fix | Tests |
 |---|---|---:|---|---|---|---|---|---|---|
 | RACK-P1-001 | Rack state transitions are distributed | P1 | open | Inspect `simulationEngine.ts` | Dedicated state machine owns transitions | Transition logic is spread across engine branches | `simulationEngine.ts` | Extract `rackLifecycle.ts` | Transition table tests |
-| RACK-P1-002 | Home vs current storage policy needs clearer semantics | P1 | open | `nearest_available_storage` strategy | User can tell whether home changes | Current strategy can update current destination without full policy UI | `rackStorageController.ts`, docs | Add explicit `updateHomeAfterReallocation` setting | Storage strategy tests |
+| RACK-P1-002 | Home vs current storage policy needs clearer semantics | P1 | fixed | `nearest_available_storage` strategy | User can tell whether home changes | Runtime now updates current storage/cell while design home stays stable unless configured | `rackStorageController.ts`, `simulationEngine.ts`, docs | Added runtime current-cell updates and `updateRackHomeAfterReallocation` config | Storage strategy tests |
+| RACK-P0-003 | Runtime rack visual snapped back to old design cell | P0 | fixed | Run nearest-available storage task to completion | Rack renders at runtime destination storage | Design ObjectLayer rendered `homeCell` during simulation | `LayoutCanvas.tsx`, `RuntimeRackLayer.tsx`, `rackRuntimeView.ts` | Render simulation racks from runtime state | Runtime rack render tests |
 
 ## Station Behavior
 
@@ -36,6 +37,7 @@ Statuses: open, in progress, fixed, deferred.
 |---|---|---:|---|---|---|---|---|---|---|
 | STN-P1-001 | Partial fulfillment is thin | P1 | open | Order quantity exceeds selected bin quantity | Order line becomes SHORT or selects additional rack | Current path is simple single-rack fulfillment | `inventory.ts`, `simulationEngine.ts` | Support multi-rack order lines | Shortage tests |
 | STN-P2-002 | Pack/QC/buffer behavior is dwell-only | P2 | deferred | Use PACK/QC station | Correct workflow semantics by station type | Service does not model downstream process | `station.ts`, `simulationEngine.ts` | Add process-specific event hooks later | Station type tests |
+| STN-P0-003 | Queue-head robot repeatedly attempted occupied station cell | P0 | fixed | Diagnostics `issue-report-20260516-165350.json` | Robot waits at queue head until station service cell is free | Collision guard repeatedly prevented entry and visual pose could remain partially overlapped | `simulationEngine.ts`, `collisionRuntime.ts` | Added station-entry hold and safe-cell rollback | Logic regression tests |
 
 ## Inventory / Order Behavior
 
@@ -119,4 +121,3 @@ Deferred:
 - P1: Dedicated visual queue-lane editing/reordering beyond current generated/manual cell editing.
 - P1: Richer post-drop egress visualization.
 - P2: Full contextual graph preventing any unassigned station pass-through in every analytics/path-planning context.
-

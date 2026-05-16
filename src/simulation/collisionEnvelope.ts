@@ -84,7 +84,12 @@ export function envelopeOverlapsStaticRacks(layout: WarehouseLayout, state: Simu
     if (rack.id === ignoredRackId || rack.id === envelope.carryingRackId) continue;
     const status = state.rackStates[rack.id]?.operationalStatus ?? rack.operationalStatus ?? "STORED";
     if (!["STORED", "RESERVED", "UNAVAILABLE"].includes(status)) continue;
-    for (const cell of rackOccupiedCells(rack, layout.grid)) {
+    const runtimeRack = {
+      ...rack,
+      homeCell: state.rackStates[rack.id]?.currentCell ?? rack.homeCell,
+      currentOrientationDeg: state.rackStates[rack.id]?.currentOrientationDeg ?? rack.currentOrientationDeg
+    };
+    for (const cell of rackOccupiedCells(runtimeRack, layout.grid)) {
       if (envelopeCells.has(cellKey(cell))) result.push({ rackId: rack.id, cell });
     }
   }
@@ -102,4 +107,3 @@ export function envelopeToReservationFootprint(envelope: RobotEnvelope): GridCel
     col: cell.col - envelope.centerCell.col
   }));
 }
-

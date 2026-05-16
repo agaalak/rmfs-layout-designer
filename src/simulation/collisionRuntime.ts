@@ -47,6 +47,10 @@ function lowerPriorityRobot(a: Robot | undefined, b: Robot | undefined): Robot |
   return a.robotId > b.robotId ? a : b;
 }
 
+function poseForCell(cell: GridCell) {
+  return { x: cell.col + 0.5, y: cell.row + 0.5, yawDeg: 0 };
+}
+
 export function detectRobotRobotOverlaps(layout: WarehouseLayout, state: SimulationState): RuntimeCollisionIssue[] {
   const envelopes = getAllRobotRuntimeEnvelopes(layout, state);
   const issues: RuntimeCollisionIssue[] = [];
@@ -195,6 +199,13 @@ export function applyCollisionGuard(
     });
     return {
       ...previousRobot,
+      pose: {
+        ...poseForCell(previousRobot.currentCell),
+        yawDeg: previousRobot.pose.yawDeg
+      },
+      targetCell: undefined,
+      segmentProgressM: 0,
+      pathProgress: previousRobot.routeIndex,
       waitingReason: `Collision guard: ${message}`,
       conflictTarget: issue?.otherRobotId ?? issue?.rackId,
       blockedSinceSec: blockedSince[robot.robotId],

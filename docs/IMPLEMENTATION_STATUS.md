@@ -60,6 +60,8 @@
 - Operational task pipeline layered over movement tasks, with `PICK_ORDER`, `REPLENISH_RACK`, `MOVE_RACK_TO_STATION`, return/storage states, timestamps, and route segments.
 - Simulation Mode now creates sample orders from actual rack inventory, selects racks by SKU availability, reserves inventory/racks/storage, updates inventory at service, completes orders after rack return, and records structured operational events.
 - Rack storage/reallocation strategies include return home, nearest available storage, and keep hot racks near stations.
+- Multi-robot dispatch now uses queue lane capacity instead of a single active-task station lock.
+- Simulation Mode renders stored racks from runtime rack/storage state, so relocated racks appear at their current storage location.
 - Simulation UI now includes Orders & Inventory, Controllers, operational task trace, robot/station state summaries, and orders/inventory CSV exports.
 - Simulation Readiness card now explains missing layout/inventory/station/storage/simulation prerequisites and exposes one-click inventory/order fixes.
 - Orders & Inventory actions now populate sample rack-bin inventory, refresh the inventory snapshot, generate sample orders from available SKU inventory, clear orders, clear inventory, and auto-fix readiness where safe.
@@ -119,15 +121,18 @@
 - Traffic-control pass added loaded rack envelopes, envelope/resource reservations, wait/replan counters, conservative deadlock detection/recovery, traffic metrics, scenario runner, and a targeted Traffic Control UI section.
 - User-reported stabilization pass confirmed and fixed the oversized default demo, missing workflow-independent view controls, weak mouse zoom/pan, missing order/inventory recovery actions, and globally skipped interactive canvas E2E coverage.
 - User-reported stabilization pass added runtime collision enforcement so the simulator does not accept visually overlapping robot/rack states after movement.
+- Logic/algorithm bug-fix pass removed the station-level dispatch serializer that made only one robot appear to run.
+- Logic/algorithm bug-fix pass added queue lane runtime reservations, runtime rack rendering, nearest-available storage scoring by `podServiceCell`, and rack `currentCell` updates after drop.
+- Diagnostics follow-up fixed queue-head robots repeatedly attempting to enter an occupied station service cell and made collision rollback snap to the previous safe cell center.
 
 ## Test Status
 
 - `npm install`: passed, 0 vulnerabilities.
 - `npm run build`: passed. Manual chunks avoid the previous large single-bundle warning.
-- `npm test -- --run`: 13 files passed, 82 tests passed.
+- `npm test -- --run`: 15 files passed, 94 tests passed.
 - `npm run test:e2e -- e2e/debug-qa.spec.ts --workers=1`: 3 debug/QA browser tests passed.
 - `npm run test:e2e -- --workers=1`: 18 browser tests passed, 0 skipped.
-- Browser QA through Playwright at `http://127.0.0.1:5174/`: covered app load, Small Demo first load, manual canvas editing, object manipulation, validation/analytics, import/export, Mode B candidate apply, Hybrid lock preservation, one simple simulation cycle, always-visible canvas controls, wheel zoom, space-drag pan, workflow navigation, responsive drawers, and Simulation workflow availability.
+- Browser QA through Playwright at `http://127.0.0.1:5174/`: covered app load, Small Demo first load, manual canvas editing, object manipulation, validation/analytics, import/export, Mode B candidate apply, Hybrid lock preservation, one simple simulation cycle, always-visible canvas controls, wheel zoom, space-drag pan, workflow navigation, responsive drawers, Simulation workflow availability, and a live Small Demo simulation step with 4 active robots / 4 assigned tasks.
 
 ## Completion Plan
 

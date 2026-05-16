@@ -19,6 +19,7 @@ import { ObjectLayer } from "./ObjectLayer";
 import { PathLayer } from "./PathLayer";
 import { ReservationLayer } from "./ReservationLayer";
 import { RobotLayer } from "./RobotLayer";
+import { RuntimeRackLayer } from "./RuntimeRackLayer";
 import { SelectionLayer } from "./SelectionLayer";
 import { SimulationOverlayLayer } from "./SimulationOverlayLayer";
 import { CanvasViewControls } from "./CanvasViewControls";
@@ -76,6 +77,10 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
   const [selectionEnd, setSelectionEnd] = useState<GridCell | undefined>();
   const cellSize = 22;
   const designLocked = appMode === "simulation";
+  const renderRuntimeRacks = appMode === "simulation" && simulation.initialized;
+  const hiddenRackIds = renderRuntimeRacks
+    ? new Set(layout.racks.map((rack) => rack.id))
+    : new Set(simulation.robots.map((robot) => robot.carryingRackId).filter(Boolean) as string[]);
   const gridPixelWidth = layout.grid.columns * cellSize;
   const gridPixelHeight = layout.grid.rows * cellSize;
   const width = Math.max(320, containerSize.width);
@@ -334,12 +339,13 @@ export function LayoutCanvas({ validation, analytics }: LayoutCanvasProps) {
             showLabels={showLabels}
             onSelect={selectObject}
             onMove={(ref, row, col) => moveObject(ref, { row, col })}
-            hiddenRackIds={new Set(simulation.robots.map((robot) => robot.carryingRackId).filter(Boolean) as string[])}
+            hiddenRackIds={hiddenRackIds}
             draggableObjects={!designLocked}
           />
         </Layer>
         {appMode === "simulation" ? (
           <Layer>
+            {renderRuntimeRacks ? <RuntimeRackLayer layout={layout} simulation={simulation} selected={selected} validation={validation} cellSize={cellSize} showLabels={showLabels} onSelect={selectObject} /> : null}
             <ReservationLayer simulation={simulation} cellSize={cellSize} visible={appMode === "simulation" && simulationConfig.showReservations} />
             <PathLayer simulation={simulation} cellSize={cellSize} visible={simulationConfig.showPaths} />
             <RobotLayer layout={layout} simulation={simulation} cellSize={cellSize} showLabels={simulationConfig.showRobotLabels} showLoadedEnvelope={simulationConfig.showLoadedEnvelope} />

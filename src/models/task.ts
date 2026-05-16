@@ -46,6 +46,7 @@ export interface SimulationTask {
   operationalTaskId?: string;
   sourceStorageLocationId?: string;
   destinationStorageLocationId?: string;
+  queueLaneId?: string;
   selectedBins?: SimulationTaskBinSelection[];
   serviceKind?: "PICK" | "REPLENISH" | "DWELL";
   rotationPreCompleted?: boolean;

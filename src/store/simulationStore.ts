@@ -64,6 +64,7 @@ const initialState: SimulationState = {
   failedTasks: [],
   reservationTable: createReservationTable(defaultSimulationConfig.reservationTimeStepSec),
   stationQueues: [],
+  queueLaneStates: {},
   eventLog: [],
   trafficDiagnostics: structuredClone(emptyTrafficDiagnostics),
   metrics: emptySimulationMetrics,

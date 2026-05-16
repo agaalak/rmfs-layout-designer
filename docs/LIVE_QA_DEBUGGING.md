@@ -166,4 +166,23 @@ When debugging queue/station/pod/rotation issues, inspect:
 - simulation events around `reached rack pickup`, `arrived at station service cell`, `rotated`, and `entered destination pod service cell`
 
 Diagnostics exports now include the migrated layout model, so issue reports can show whether a failure happened on a queue cell, station cell, pod service cell, or rotation-enabled cell.
+# Logic Bug Debugging Notes
+
+For multi-robot dispatch issues, inspect:
+
+- active robot count
+- idle robot count
+- pending task count
+- `queueLaneStates`
+- station queue active/waiting robot IDs
+- recent event-log messages containing "queue lane" or "delayed"
+
+For rack relocation visual issues, inspect:
+
+- `rackStates[rackId].currentStorageLocationId`
+- `rackStates[rackId].currentCell`
+- `storageLocationStates[storageId].currentlyStoredRackId`
+- whether Simulation Mode is rendering runtime racks instead of design-time `homeCell`
+
+The Simulation panel now surfaces queue lane load and rack runtime locations directly, while `window.__RMFS_DEBUG__.getSimulationSnapshot()` includes the full queue and rack runtime state.
 

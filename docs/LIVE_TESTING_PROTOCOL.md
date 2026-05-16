@@ -118,3 +118,21 @@ Use this checklist when testing corrected RMFS semantics:
 6. Confirm station service starts only after the robot enters the station service cell.
 7. Confirm rotation events reference rotation-enabled cells, not rotation-zone objects.
 8. Export JSON and confirm no `ROTATION` cell type appears.
+# Focused Logic Regression Checks
+
+When testing reports like "only one robot runs":
+
+1. Load Small Demo.
+2. Open Simulate Experimental.
+3. Initialize.
+4. Generate 6 tasks.
+5. Step once.
+6. Confirm more than one robot is active and queue lane reservations are non-zero.
+7. If not, export diagnostics and inspect `queueLaneStates`, `pendingTasks`, and recent "delayed" events.
+
+When testing reports like "the pod goes back to the old spot":
+
+1. Set rack storage strategy to `nearest_available_storage`.
+2. Run a task to completion.
+3. Compare `rackStates[rackId].currentStorageLocationId`, `rackStates[rackId].currentCell`, and the visible rack position.
+4. The visible rack should match the destination storage `podServiceCell`.

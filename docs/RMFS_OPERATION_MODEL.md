@@ -18,15 +18,15 @@ The implemented pick flow is:
 4. Select a compatible station.
 5. Select an idle robot.
 6. Reserve the rack, SKU quantity, source storage location, and return destination.
-7. Move the robot empty to a rack approach waypoint.
+7. Move the robot empty to the rack storage `podServiceCell`.
 8. Lift the rack and free the source storage location.
 9. Move loaded, optionally through a pre-station rotation-enabled cell.
-10. Queue at the station.
-11. Run station service.
+10. Reserve and enter an ordered queue lane if needed.
+11. Enter the physical `station.cell` and run station service.
 12. Decrement picked inventory and fulfill order lines.
 13. Select return storage.
 14. Optionally rotate back before storage.
-15. Drop the rack, occupy the storage location, complete the task/order, and return the robot to idle.
+15. Drop the rack on the destination storage `podServiceCell`, occupy the storage location, complete the task/order, and return the robot to idle.
 
 ## Orders vs Tasks
 
@@ -87,11 +87,15 @@ Runtime station state tracks:
 
 - active robot
 - active rack
-- FIFO queue
+- FIFO queue and queue lane runtime reservations
 - service end time
 - completed service count
 
 PICK/COMBI service decrements inventory and fulfills order lines. REPLENISH paths can increment inventory. PACK/QC/BUFFER remain dwell/service-only in this pass.
+
+Dispatch now reserves queue lane capacity. A station can have one active service robot while additional robots are already assigned and traveling toward/reserved into its queue lane.
+
+At runtime, the queue-head robot waits on the head queue cell until the station service cell is free. This prevents a following robot from repeatedly attempting to interpolate into an occupied station cell.
 
 ## Controller Strategies
 
@@ -106,9 +110,9 @@ Controllers are explicit modules so future strategy comparisons can evolve witho
 
 The controller registry in `src/simulation/controllers/controllerRegistry.ts` documents each strategy's stage, description, parameters, affected metrics, and limitations. Controller event-log entries include decision traces so a tester can inspect why a rack, station, robot, or storage location was selected.
 
-## Rotation Zones
+## Rotation-Enabled Cells
 
-If a station requires an orientation different from the rack's current orientation, route planning requires a compatible rotation-zone path. The robot stops in `ROTATING_WITH_RACK`, waits for rotation time, updates rack orientation, and then continues.
+If a station requires an orientation different from the rack's current orientation, route planning requires a compatible rotation-enabled cell. The robot stops in `ROTATING_WITH_RACK`, waits for rotation time, updates rack orientation, and then continues.
 
 Post-station rotation can restore the storage/default orientation before return.
 
@@ -136,6 +140,7 @@ The simulator now checks core invariants in development/debug contexts:
 - robot carrying rack references a valid rack
 - stored rack references a valid current storage location
 - occupied storage location references a valid rack
+- stored rack runtime cell matches its current storage location `podServiceCell`
 - reserved inventory does not exceed available quantity
 - order lines are not over-fulfilled
 - station active robot/rack references valid entities
@@ -156,7 +161,7 @@ Known limitations:
 - Reservation traffic control prevents obvious same-cell, edge-swap, loaded-envelope, and simple resource-capacity conflicts but does not prove deadlock freedom.
 - Runtime collision guards now reject accepted visual overlap states after movement and roll unsafe robots back with collision-prevented warning events.
 - Carried-rack footprint reservations are grid-cell based; continuous swept envelopes and turn-radius envelopes are not complete.
-- Rotation-zone capacity is simple capacity-1 resource reservation, not a global scheduler.
+- Rotation-enabled cell capacity is simple capacity-1 resource reservation by default, not a global scheduler.
 - Browser E2E coverage for interactive canvas workflows is active again. It covers manual editing, generation, Hybrid, a small simulation cycle, view controls, zoom, and pan.
 - Battery drain and charging queues are not realistic yet.
 - Invariant failures currently log and surface diagnostics; a future setting should optionally pause simulation immediately.
@@ -170,6 +175,15 @@ Known limitations:
 5. Improve realism: acceleration/deceleration, rotation dwell, battery drain, charging policy, and station service variability.
 6. Add experiment runner for multiple seeds, controller strategy comparison, layout comparison, and metric exports.
 7. Add 3D/RTS-style visualization only after the 2D simulator is stable.
+
+# 2026-05-14 Logic/Algorithm Correction
+
+Two runtime mismatches were fixed:
+
+1. Station dispatch no longer serializes every task behind one active station task. Queue lane capacity now controls how many robots can be sent toward a station.
+2. Simulation rack rendering no longer uses design-time `homeCell` after initialization. Stored racks render from `rackStates` and `storageLocationStates`, so nearest-available storage reallocation is visible at the selected destination.
+
+The new focused regression tests are in `tests/logic-algorithm-fixes.test.ts`.
 # 2026-05-14 Queue/Station/Pod Correction
 
 Operational flow now uses these physical checkpoints:
