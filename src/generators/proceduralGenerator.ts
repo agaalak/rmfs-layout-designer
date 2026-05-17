@@ -514,7 +514,19 @@ export function generateProceduralLayout(params: GenerationParams): WarehouseLay
     chargingSpots: chargers,
     parkingSpots: parking,
     rotationZones: [],
-    simulationConfig: params.rows <= 24 && params.columns <= 32 ? ({ ...(layout.simulationConfig ?? {}), robotCount: 4, taskCount: 6 } as WarehouseLayout["simulationConfig"]) : layout.simulationConfig,
+    simulationConfig: params.rows <= 24 && params.columns <= 32
+      ? ({
+          ...(layout.simulationConfig ?? {}),
+          robotCount: 4,
+          taskCount: 6,
+          unloadedSpeedMps: 2.4,
+          loadedSpeedMps: 2,
+          liftTimeSec: 4,
+          dropTimeSec: 4,
+          stationServiceTimeSec: 18,
+          stationAssignmentStrategy: "shortest_queue"
+        } as WarehouseLayout["simulationConfig"])
+      : layout.simulationConfig,
     metadata: {
       ...layout.metadata,
       layoutFamily: params.layoutFamily,
@@ -523,8 +535,44 @@ export function generateProceduralLayout(params: GenerationParams): WarehouseLay
   }));
 }
 
+function applyCurrentCustomSmallDemoDefault(layout: WarehouseLayout): WarehouseLayout {
+  const removedStation = layout.stations.find((station) => station.stationId === "pick_002");
+  if (!removedStation) return layout;
+  const removedLaneIds = new Set(removedStation.queueLaneIds);
+  const removedCells = new Set<string>([cellKey(removedStation.cell)]);
+  for (const lane of layout.queueLanes) {
+    if (!removedLaneIds.has(lane.queueLaneId)) continue;
+    for (const item of lane.cells) removedCells.add(cellKey(item.cell));
+  }
+  const cells = layout.cells.map((cell) =>
+    removedCells.has(cellKey(cell))
+      ? {
+          ...cell,
+          cellType: "ROAD" as const,
+          allowedDirections: allDirections,
+          allowRotation: undefined,
+          supportedRotationOrientationsDeg: undefined,
+          rotationTimeSec: undefined,
+          rotationCapacity: undefined,
+          allowedRotationRackTypes: undefined
+        }
+      : cell
+  );
+  return normalizeLayoutSemantics({
+    ...layout,
+    cells,
+    stations: layout.stations.filter((station) => station.id !== removedStation.id),
+    queueLanes: layout.queueLanes.filter((lane) => !removedLaneIds.has(lane.queueLaneId)),
+    metadata: {
+      ...layout.metadata,
+      defaultLayoutSource: "user_custom_layout_g3oeuj_0w3t",
+      removedDemoStationId: removedStation.stationId
+    }
+  });
+}
+
 export function generateSmallDemoLayout(): WarehouseLayout {
-  const layout = generateProceduralLayout(smallDemoGenerationParams);
+  const layout = applyCurrentCustomSmallDemoDefault(generateProceduralLayout(smallDemoGenerationParams));
   return {
     ...layout,
     name: "Small RMFS Demo Layout",

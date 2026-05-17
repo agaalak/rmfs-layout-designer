@@ -41,7 +41,7 @@ On screens below the desktop editing breakpoint, the Design toolbox and workflow
 
 ## Demo Presets
 
-The first load uses **Small Demo**, a compact `22 x 30` RMFS layout with connected roads, racks, 3 stations, directional queue lanes, 2 chargers, 4 parking spots, rotation-enabled road cells, sample rack-bin inventory, and simulation defaults for a small robot/task count.
+The first load uses **Small Demo**, a compact `22 x 30` RMFS layout based on the current user-tested custom layout: connected roads, 25 racks, 2 external pick stations, directional queue lanes, 2 chargers, 4 parking spots, rotation-enabled road cells, sample rack-bin inventory, and simulation defaults for a small robot/task count.
 
 The previous large `40 x 60` style layout remains available as **Large Demo** for stress and visual-density checks. Use the Design toolbar or the quick-start panel to switch demos.
 
@@ -170,7 +170,7 @@ Robots follow shortest paths over the layout graph instead of driving straight t
 
 Recent logic fixes removed the old one-active-task-per-station dispatch gate. Multiple robots can now be assigned to the same station when queue lane capacity exists, while station service itself remains one-at-a-time unless capacity is configured higher. Simulation Mode also renders stored racks from runtime rack/storage state, so `nearest_available_storage` reallocation appears at the actual destination storage cell instead of snapping back to the design-time home.
 
-The latest RAWSim-O alignment pass makes queue lanes the simulator's single queue source of truth. Station `shortest_queue` scoring reads live queue-lane occupancy/reservations and active service occupancy, not stale station `waitingRobotIds`. Nearest-rack scoring routes to the same `podServiceCell` used by pickup execution. Generic shortest-path routing blocks station cells as pass-through shortcuts unless the route is specifically targeting station service.
+The latest RAWSim-O alignment pass makes queue lanes the simulator's single queue source of truth. Dispatch reserves the physical queue entry cell, robots advance one ordered queue cell at a time, and station service starts only after the robot enters `station.cell`. Station `shortest_queue` scoring reads live queue-lane occupancy/reservations and active service occupancy, not stale station `waitingRobotIds`. Nearest-rack scoring routes to the same `podServiceCell` used by pickup execution. Generic shortest-path routing blocks station cells as pass-through shortcuts unless the route is specifically targeting station service.
 
 Traffic control now includes carried-rack envelopes for `1x1`, `1x2`, `2x1`, and `2x2` racks, simple capacity reservations for rotation-enabled cells and queue/service resources, conservative deadlock detection, runtime collision guards, and deterministic collision scenarios for regression tests. The runtime guard rolls back unsafe moves before visual overlap becomes accepted simulation state, logs collision-prevented warnings, and increments traffic diagnostics. It remains a practical early traffic-control layer, not a globally optimal MAPF planner.
 
@@ -246,7 +246,7 @@ The current verified pass used:
 - `npm test -- --run`
 - `npm run test:e2e -- --workers=1`
 
-Current verified status: build passes, typecheck passes, 20 unit/component test files pass with 101 tests, and the 19-test Playwright E2E suite runs without global interactive skips. E2E covers app load, manual canvas editing, object manipulation, import/export, Mode B candidate apply, Hybrid lock preservation, one small simulation task cycle, always-visible view controls, wheel zoom, space-drag pan, workflow navigation, responsive drawers, Debug / QA queue inspectors, and Simulation workflow availability. Live Playwright smoke against the running dev server also confirmed 4 active robots and 4 assigned tasks after a Small Demo simulation step.
+Current verified status: build passes, typecheck passes, 20 unit/component test files pass with 105 tests, and the 19-test Playwright E2E suite runs without global interactive skips. E2E covers app load, manual canvas editing, object manipulation, import/export, Mode B candidate apply, Hybrid lock preservation, one completed Small Demo simulation task cycle, always-visible view controls, wheel zoom, space-drag pan, workflow navigation, responsive drawers, Debug / QA queue inspectors, and Simulation workflow availability.
 
 ## Controls
 

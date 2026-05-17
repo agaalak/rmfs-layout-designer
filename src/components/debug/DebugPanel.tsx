@@ -96,11 +96,11 @@ export function DebugPanel() {
             <div key={lane.queueLaneId} className="rounded border border-border bg-teal-50 p-2 text-xs">
               <div className="font-semibold">{lane.queueLaneId} to {lane.stationId}</div>
               <div className="text-muted-foreground">
-                reserved {lane.reservedTaskIds.length} / occupied {lane.cells.filter((cell) => cell.robotId).length}
+                reserved {lane.cells.filter((cell) => cell.reservedRobotId || cell.reservedTaskId).length} / occupied {lane.cells.filter((cell) => cell.robotId).length}
                 {lane.activeHeadRobotId ? ` / head ${lane.activeHeadRobotId}` : ""}
               </div>
               <div className="mt-1 truncate">
-                {lane.cells.map((cell) => `${cell.queueIndex}:${cell.cell}${cell.robotId ? `=${cell.robotId}` : ""}`).join(" | ")}
+                {lane.cells.map((cell) => `${cell.queueIndex}:${cell.cell}${cell.robotId ? `=${cell.robotId}` : cell.reservedRobotId ? `~${cell.reservedRobotId}` : ""}`).join(" | ")}
               </div>
             </div>
           ))}

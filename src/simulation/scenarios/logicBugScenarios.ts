@@ -52,12 +52,13 @@ export function runLogicBugScenario(
     stationServiceTimeSec: 0.2,
     collisionCheckingEnabled: false,
     deadlockDetectionEnabled: false,
+    stationAssignmentStrategy: "shortest_queue",
     rackStorageStrategy: scenarioId === "return_home_storage" ? "return_home" : "nearest_available_storage",
     ...overrides
   };
   let state = initializeSimulation(layout, config);
   state = applyGeneratedWork(state, generateOperationalSimulationWork(layout, state, config));
-  for (let step = 0; step < maxSteps && (scenarioId === "multi_robot_single_station_queue" ? step < 3 : state.completedTasks.length === 0); step += 1) {
+  for (let step = 0; step < maxSteps && (scenarioId === "multi_robot_single_station_queue" ? step < 30 : state.completedTasks.length === 0); step += 1) {
     state = stepSimulation(layout, state, config, 1);
   }
 
@@ -82,4 +83,3 @@ export function runLogicBugScenario(
     rackRuntimeMatchesVisual
   };
 }
-

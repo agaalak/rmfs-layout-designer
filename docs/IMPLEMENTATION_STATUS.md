@@ -42,7 +42,7 @@
 - Simulation control panel with initialize, generate tasks, create manual task, play/pause/step/reset, speed multiplier, display toggles, settings, event filters, and simulation config/log/metrics exports.
 - Traffic Control diagnostics section in Experimental Simulation Mode showing conflicts, waits, replans, deadlocks, active reservations, blocked/waiting robots, and traffic policy settings.
 - Carried-rack collision envelope module with unloaded/loaded robot envelopes, rectangular rack rotation support, blocked-cell/static-rack overlap detection, and reservation footprint conversion.
-- Runtime collision guard that checks simulation state after movement, prevents accepted same-cell, edge-swap, loaded-envelope, stored-rack, and blocked-cell overlaps, rolls unsafe moves back, and logs collision-prevented warning events.
+- Runtime collision guard that checks simulation state after movement, includes visual pose-cell envelopes, prevents accepted same-cell, edge-swap, loaded-envelope, stored-rack, and blocked-cell overlaps, rolls unsafe moves back, and logs collision-prevented warning events.
 - Built-in Debug / QA panel opened from the app header or `Ctrl+Shift+D`, with console/runtime capture, user action recording, simulation/traffic/controller event mirrors, performance samples, diagnostics export, and issue report export.
 - Top-level React ErrorBoundary that captures render failures into the debug store and displays a user-friendly fallback instead of leaving a blank app.
 - `window.__RMFS_DEBUG__` live diagnostics API and `window.__RMFS_TEST__` dev/test state inspection hook.
@@ -60,7 +60,7 @@
 - Operational task pipeline layered over movement tasks, with `PICK_ORDER`, `REPLENISH_RACK`, `MOVE_RACK_TO_STATION`, return/storage states, timestamps, and route segments.
 - Simulation Mode now creates sample orders from actual rack inventory, selects racks by SKU availability, reserves inventory/racks/storage, updates inventory at service, completes orders after rack return, and records structured operational events.
 - Rack storage/reallocation strategies include return home, nearest available storage, and keep hot racks near stations.
-- Multi-robot dispatch now uses queue lane capacity instead of a single active-task station lock.
+- Multi-robot dispatch now uses physical queue-lane entry admission instead of a single active-task station lock. Robots reserve the entry/tail cell, then advance through ordered queue cells one cell at a time before entering `station.cell`.
 - Simulation Mode renders stored racks from runtime rack/storage state, so relocated racks appear at their current storage location.
 - Simulation UI now includes Orders & Inventory, Controllers, operational task trace, robot/station state summaries, and orders/inventory CSV exports.
 - Simulation Readiness card now explains missing layout/inventory/station/storage/simulation prerequisites and exposes one-click inventory/order fixes.
@@ -128,16 +128,18 @@
 - RAWSim-O alignment follow-up changed nearest-rack scoring to route to `StorageLocation.podServiceCell`, matching pickup execution semantics.
 - RAWSim-O alignment follow-up added graph routing context so generic shortest-path calls block station cells as pass-through shortcuts while assigned station-service routing can still target `station.cell`.
 - RAWSim-O alignment follow-up added Debug / QA inspectors and globals for queue lanes, station admission, waiting reasons, controller decision traces, and reservation snippets.
+- Current custom Small Demo default now matches the user-tested `layout_g3oeuj_0w3t` shape: two external pick stations, directional queue lanes, 25 racks, 2 chargers, 4 parking spots, and compact simulation settings that complete a demo cycle reliably.
+- Queue admission follow-up fixed stacked queue-head robots by reserving the physical queue entry cell only, using planned queue load during order/task generation, filtering unreachable station candidates, and applying the layout simulation config to the active UI store before task generation.
 
 ## Test Status
 
 - `npm install`: passed, 0 vulnerabilities.
 - `npm run build`: passed. Manual chunks avoid the previous large single-bundle warning.
 - `npm run typecheck`: passed.
-- `npm test -- --run`: 20 files passed, 101 tests passed.
+- `npm test -- --run`: 20 files passed, 105 tests passed.
 - `npm run test:e2e -- e2e/debug-qa.spec.ts --workers=1`: 3 debug/QA browser tests passed.
 - `npm run test:e2e -- --workers=1`: 19 browser tests passed, 0 skipped.
-- Browser QA through Playwright at `http://127.0.0.1:5174/`: covered app load, Small Demo first load, manual canvas editing, object manipulation, validation/analytics, import/export, Mode B candidate apply, Hybrid lock preservation, one simple simulation cycle, always-visible canvas controls, wheel zoom, space-drag pan, workflow navigation, responsive drawers, Simulation workflow availability, and a live Small Demo simulation step with 4 active robots / 4 assigned tasks.
+- Browser QA through Playwright: covered app load, Small Demo first load, manual canvas editing, object manipulation, validation/analytics, import/export, Mode B candidate apply, Hybrid lock preservation, one completed Experimental Simulation cycle, always-visible canvas controls, wheel zoom, space-drag pan, workflow navigation, responsive drawers, and Simulation workflow availability.
 
 ## Completion Plan
 

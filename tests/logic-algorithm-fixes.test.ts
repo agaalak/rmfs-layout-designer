@@ -19,6 +19,7 @@ const fastConfig: SimulationConfig = {
   stationServiceTimeSec: 0.2,
   collisionCheckingEnabled: false,
   deadlockDetectionEnabled: false,
+  stationAssignmentStrategy: "shortest_queue",
   reservationTimeStepSec: 1
 };
 
@@ -65,23 +66,28 @@ function withExtraEmptyStorage() {
 describe("logic and algorithm bug fixes", () => {
   it("dispatches multiple robots instead of serializing all work behind one active station task", () => {
     const { layout, state } = applyWork();
-    const next = stepSimulation(layout, state, fastConfig, 0.2);
+    let next = state;
+    for (let index = 0; index < 80 && next.robots.filter((robot) => robot.assignedTaskId).length <= 1; index += 1) {
+      next = stepSimulation(layout, next, fastConfig, 0.5);
+    }
     const assignedRobots = next.robots.filter((robot) => robot.assignedTaskId);
     expect(assignedRobots.length).toBeGreaterThan(1);
     expect(next.eventLog.filter((event) => event.message.includes("assigned to robot_")).length).toBeGreaterThan(1);
   });
 
-  it("reserves queue lane capacity for dispatched robots", () => {
+  it("reserves physical queue entry cells without duplicate queue-cell targets", () => {
     const { layout, state } = applyWork();
     const next = stepSimulation(layout, state, fastConfig, 0.2);
     const laneLoads = Object.values(next.queueLaneStates).map((lane) => lane.reservedTaskIds.length + lane.occupiedCells.filter((cell) => cell.robotId).length);
-    expect(Math.max(...laneLoads)).toBeGreaterThan(1);
+    expect(Math.max(...laneLoads)).toBeGreaterThan(0);
+    const reservedCells = Object.values(next.queueLaneStates).flatMap((lane) => lane.occupiedCells.filter((cell) => cell.reservedTaskId).map((cell) => `${lane.queueLaneId}:${cell.queueIndex}`));
+    expect(new Set(reservedCells).size).toBe(reservedCells.length);
   });
 
   it("scenario runner confirms multi-robot queue dispatch", () => {
     const result = runLogicBugScenario("multi_robot_single_station_queue");
     expect(result.activeRobotCount).toBeGreaterThan(1);
-    expect(result.maxQueueLaneLoad).toBeGreaterThan(1);
+    expect(result.maxQueueLaneLoad).toBeGreaterThan(0);
   });
 
   it("nearest_available_storage selects an empty destination by pod service cell route", () => {
@@ -167,6 +173,19 @@ describe("logic and algorithm bug fixes", () => {
     expect(cellKey(waitingRobot.currentCell)).toBe(cellKey(head));
     expect(waitingRobot.pose.y).toBe(head.row + 0.5);
     expect(waitingRobot.waitingReason).toContain("Waiting at queue head");
+  });
+
+  it("does not stack two robots on the same queue-head cell while a station is busy", () => {
+    const config = { ...fastConfig, collisionCheckingEnabled: true, stationServiceTimeSec: 10 };
+    const { layout, state: initial } = applyWork(generateSmallDemoLayout(), config);
+    let state = initial;
+    for (let index = 0; index < 40; index += 1) {
+      state = stepSimulation(layout, state, config, 0.2);
+      const queueRobotCells = state.robots
+        .filter((robot) => robot.state === "QUEUING_AT_STATION")
+        .map((robot) => cellKey(robot.currentCell));
+      expect(new Set(queueRobotCells).size).toBe(queueRobotCells.length);
+    }
   });
 
   it("collision guard rolls unsafe movement back to the safe cell center", () => {

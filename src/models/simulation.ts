@@ -79,6 +79,8 @@ export interface QueueLaneRuntimeCell {
   cell: GridCell;
   robotId?: string;
   taskId?: string;
+  reservedRobotId?: string;
+  reservedTaskId?: string;
 }
 
 export interface QueueLaneRuntimeState {

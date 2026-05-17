@@ -37,8 +37,10 @@ import {
   chooseQueueLaneForStation,
   createQueueLaneStates,
   deriveStationQueuesFromRuntime,
+  advanceQueueLaneRobots,
   holdRobotBeforeBlockedStationEntry,
-  reserveQueueLaneSlot,
+  releaseQueueLaneSlot,
+  reserveQueueLaneSlotWithCell,
   robotsReadyForStationService,
   stationHasDispatchCapacity,
   syncQueueLaneStates
@@ -300,6 +302,7 @@ export function generateOperationalSimulationWork(layout: WarehouseLayout, state
   const eventLog = [...state.eventLog];
   const rackStates = { ...state.rackStates };
   const storageLocationStates = { ...state.storageLocationStates };
+  let planningQueueLaneStates = structuredClone(state.queueLaneStates);
 
   for (const [orderIndex, order] of generatedOrders.entries()) {
     const line = order.orderLines[0];
@@ -318,7 +321,7 @@ export function generateOperationalSimulationWork(layout: WarehouseLayout, state
       continue;
     }
     const station = selectStationForRack(normalized, selectedRack.rack, config.stationAssignmentStrategy, {
-      queueLaneStates: state.queueLaneStates,
+      queueLaneStates: planningQueueLaneStates,
       stationStates: state.stationStates,
       stationQueues: state.stationQueues
     });
@@ -345,6 +348,16 @@ export function generateOperationalSimulationWork(layout: WarehouseLayout, state
     task.destinationStorageLocationId = destination?.storageLocationId ?? selectedRack.rack.homeStorageLocationId;
     task.selectedBins = [{ lineId: line.lineId, binId: selectedRack.bin.binId, rackId: selectedRack.rack.id, sku: line.sku, quantity: line.quantity }];
     task.serviceKind = station.stationType === "REPLENISH" ? "REPLENISH" : "PICK";
+    const planningLane = chooseQueueLaneForStation(normalized, { ...state, queueLaneStates: planningQueueLaneStates, tasks: [...state.tasks, ...tasks] }, station.id);
+    if (planningLane) {
+      const planningReservation = reserveQueueLaneSlotWithCell(
+        { ...state, queueLaneStates: planningQueueLaneStates, tasks: [...state.tasks, ...tasks, task] },
+        planningLane.queueLaneId,
+        `planned_${task.taskId}`,
+        task.taskId
+      );
+      planningQueueLaneStates = planningReservation.state.queueLaneStates;
+    }
     nextInventory = reserveInventory(nextInventory, selectedRack.bin.binId, line.quantity);
     rackStates[selectedRack.rack.id] = {
       ...(rackStates[selectedRack.rack.id] ?? {
@@ -455,9 +468,9 @@ function planTaskRoute(layout: WarehouseLayout, robot: Robot, task: SimulationTa
   const preRotation = needsRotation ? findNearestRotationCellPath(layout, pickupCell, station.requiredRackOrientationDeg) : [];
   if (needsRotation && preRotation.length === 0) return undefined;
   const stationStart = preRotation.at(-1) ?? pickupCell;
-  const loadedPathToStation = findPathToStationQueue(layout, stationStart, station, task.queueLaneId);
+  const loadedPathToStation = findPathToStationQueue(layout, stationStart, station, task.queueLaneId, task.queueTargetCell);
   if (loadedPathToStation.length === 0) return undefined;
-  const stationArrival = loadedPathToStation.at(-1)!;
+  const stationArrival = task.queueTargetCell ? station.cell : loadedPathToStation.at(-1)!;
   const postRotation = needsRotation ? findNearestRotationCellPath(layout, stationArrival, rack.currentOrientationDeg) : [];
   if (needsRotation && postRotation.length === 0) return undefined;
   const returnStart = postRotation.at(-1) ?? stationArrival;
@@ -567,9 +580,31 @@ function assignTasks(layout: WarehouseLayout, state: SimulationState, config: Si
     const pickupTarget = storageLocationForRackTask(layout, rack, task.sourceStorageLocationId)?.podServiceCell ?? rack.homeCell;
     const robot = selectRobotForCell(layout, next.robots, pickupTarget, config.robotAssignmentStrategy, unavailableRobotIds);
     if (!robot) break;
-    const taskForPlanning = { ...task, queueLaneId: task.queueLaneId ?? selectedQueueLane?.queueLaneId };
+    let taskForPlanning = { ...task, queueLaneId: task.queueLaneId ?? selectedQueueLane?.queueLaneId };
+    if (taskForPlanning.queueLaneId) {
+      const slotReservation = reserveQueueLaneSlotWithCell(next, taskForPlanning.queueLaneId, robot.robotId, task.taskId);
+      if (!slotReservation.cell) {
+        next.eventLog = log(next.eventLog, {
+          timeSec: next.simTimeSec,
+          severity: "warning",
+          entityType: "station",
+          entityId: station.id,
+          taskId: task.taskId,
+          message: `Task ${task.taskId} delayed: no physical queue cell is available in ${taskForPlanning.queueLaneId}.`
+        });
+        unavailableRobotIds.add(robot.robotId);
+        continue;
+      }
+      next = slotReservation.state;
+      taskForPlanning = {
+        ...taskForPlanning,
+        queueTargetCell: slotReservation.cell.cell,
+        queueTargetIndex: slotReservation.cell.queueIndex
+      };
+    }
     const routePlan = planTaskRoute(layout, robot, taskForPlanning);
     if (!routePlan) {
+      next = releaseQueueLaneSlot(next, taskForPlanning.queueLaneId, robot.robotId, task.taskId);
       next.tasks = next.tasks.map((item) => (item.taskId === task.taskId ? { ...item, status: "FAILED", failureReason: "No valid route found." } : item));
       next.failedTasks.push({ ...task, status: "FAILED", failureReason: "No valid route found." });
       next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "error", taskId: task.taskId, message: `Task ${task.taskId} failed: no route.` });
@@ -610,9 +645,11 @@ function assignTasks(layout: WarehouseLayout, state: SimulationState, config: Si
       });
       unavailableRobotIds.add(robot.robotId);
       if (reservation.blocked && temporaryDispatchConflict) {
+        next = releaseQueueLaneSlot(next, taskForPlanning.queueLaneId, robot.robotId, task.taskId);
         continue;
       }
       if (reservation.blocked) {
+        next = releaseQueueLaneSlot(next, taskForPlanning.queueLaneId, robot.robotId, task.taskId);
         next.trafficDiagnostics.failedDueToTrafficCount += 1;
         next.tasks = next.tasks.map((item) => (item.taskId === task.taskId ? { ...item, status: "FAILED", failureReason: message } : item));
         next.failedTasks.push({ ...task, status: "FAILED", failureReason: message });
@@ -645,7 +682,6 @@ function assignTasks(layout: WarehouseLayout, state: SimulationState, config: Si
     }
     next.reservationTable = reservation.table;
     if (taskForPlanning.queueLaneId) {
-      next = reserveQueueLaneSlot(next, taskForPlanning.queueLaneId, robot.robotId, task.taskId);
       next.eventLog = log(next.eventLog, {
         timeSec: next.simTimeSec,
         severity: "info",
@@ -653,7 +689,7 @@ function assignTasks(layout: WarehouseLayout, state: SimulationState, config: Si
         entityId: station.id,
         robotId: robot.robotId,
         taskId: task.taskId,
-        message: `${robot.robotId} reserved queue lane ${taskForPlanning.queueLaneId} for station ${station.stationId}.`
+        message: `${robot.robotId} reserved queue lane ${taskForPlanning.queueLaneId} index ${taskForPlanning.queueTargetIndex ?? "?"} for station ${station.stationId}.`
       });
     }
     next.robots = next.robots.map((item) =>
@@ -677,7 +713,16 @@ function assignTasks(layout: WarehouseLayout, state: SimulationState, config: Si
     );
     next.tasks = next.tasks.map((item) =>
       item.taskId === task.taskId
-        ? { ...item, status: "ASSIGNED", robotId: robot.robotId, assignedAtSec: next.simTimeSec, routePlan, queueLaneId: taskForPlanning.queueLaneId }
+        ? {
+            ...item,
+            status: "ASSIGNED",
+            robotId: robot.robotId,
+            assignedAtSec: next.simTimeSec,
+            routePlan,
+            queueLaneId: taskForPlanning.queueLaneId,
+            queueTargetCell: taskForPlanning.queueTargetCell,
+            queueTargetIndex: taskForPlanning.queueTargetIndex
+          }
         : item
     );
     next.operationalTasks = next.operationalTasks.map((item) =>
@@ -975,13 +1020,45 @@ function handleRobotTransitions(layout: WarehouseLayout, state: SimulationState,
         continue;
       }
       const stationId = task.stationId;
+      const station = stationId ? layout.stations.find((item) => item.id === stationId) : undefined;
+      const atStationCell = station ? cellKey(robot.currentCell) === cellKey(station.cell) : false;
+      const queueLane = task.queueLaneId ? layout.queueLanes.find((lane) => lane.queueLaneId === task.queueLaneId) : undefined;
+      const queueCell = queueLane?.cells.find((item) => cellKey(item.cell) === cellKey(robot.currentCell));
       next.robots = next.robots.map((item) =>
-        item.robotId === robot.robotId ? { ...item, state: "QUEUING_AT_STATION", color: robotColors.QUEUING_AT_STATION, currentPath: [] } : item
+        item.robotId === robot.robotId
+          ? {
+              ...item,
+              state: "QUEUING_AT_STATION",
+              color: robotColors.QUEUING_AT_STATION,
+              currentPath: [],
+              routeIndex: 0,
+              segmentProgressM: 0,
+              pathProgress: 0,
+              targetCell: undefined,
+              waitingReason: atStationCell
+                ? "Ready for station service"
+                : queueCell
+                  ? `Waiting in queue lane ${queueLane?.queueLaneId} index ${queueCell.queueIndex}`
+                  : "Waiting for station admission"
+            }
+          : item
       );
       next.operationalTasks = next.operationalTasks.map((item) =>
         item.operationalTaskId === task.operationalTaskId ? { ...item, status: "QUEUING", timestamps: { ...item.timestamps, queuingAtSec: next.simTimeSec } } : item
       );
-      next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "info", entityType: "station", entityId: stationId, robotId: robot.robotId, taskId: task.taskId, message: `${robot.robotId} entered station service cell and is ready for service.` });
+      next.eventLog = log(next.eventLog, {
+        timeSec: next.simTimeSec,
+        severity: "info",
+        entityType: "station",
+        entityId: stationId,
+        robotId: robot.robotId,
+        taskId: task.taskId,
+        message: atStationCell
+          ? `${robot.robotId} entered station service cell and is ready for service.`
+          : queueCell
+            ? `${robot.robotId} entered queue lane ${queueLane?.queueLaneId} index ${queueCell.queueIndex}.`
+            : `${robot.robotId} completed loaded travel but is not on a known queue or station cell.`
+      });
     }
     if (robot.state === "ROTATING_WITH_RACK" && robot.waitUntilSec !== undefined && next.simTimeSec >= robot.waitUntilSec) {
       const targetOrientation = robot.routePhase === "PRE_ROTATION" ? task.requiredStationOrientationDeg : layout.racks.find((rack) => rack.id === task.rackId)?.currentOrientationDeg;
@@ -1175,6 +1252,9 @@ export function stepSimulation(layout: WarehouseLayout, state: SimulationState, 
     simTimeSec: state.simTimeSec + deltaTimeSec
   };
   next = assignTasks(normalized, next, config);
+  const queueAdvance = advanceQueueLaneRobots(normalized, next, robotColors.MOVING_LOADED);
+  next = queueAdvance.state;
+  for (const event of queueAdvance.events) next.eventLog = log(next.eventLog, event);
   const beforeMove = structuredClone(next) as SimulationState;
   next.robots = next.robots.map((robot) => {
     const stationHeldRobot = holdRobotBeforeBlockedStationEntry(normalized, next, robot);

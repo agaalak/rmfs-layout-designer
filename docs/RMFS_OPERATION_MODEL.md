@@ -93,9 +93,9 @@ Runtime station state tracks:
 
 PICK/COMBI service decrements inventory and fulfills order lines. REPLENISH paths can increment inventory. PACK/QC/BUFFER remain dwell/service-only in this pass.
 
-Dispatch now reserves queue lane capacity. A station can have one active service robot while additional robots are already assigned and traveling toward/reserved into its queue lane.
+Dispatch now reserves the physical queue-lane entry cell. A station can have one active service robot while additional robots are assigned over time as queue entry cells become available. Queue capacity is still represented by ordered lane cells, but robots do not teleport or pass through occupied queue cells to claim deeper slots.
 
-At runtime, the queue-head robot waits on the head queue cell until the station service cell is free. This prevents a following robot from repeatedly attempting to interpolate into an occupied station cell.
+At runtime, a robot enters the tail/entry queue cell, advances one ordered cell at a time, waits at the head queue cell until the station service cell is free, and only then moves into `station.cell`. This prevents following robots from stacking on the head cell or repeatedly attempting to interpolate into an occupied station cell.
 
 The runtime source of truth for waiting robots is `SimulationState.queueLaneStates`. `StationQueue.waitingRobotIds` is now treated as a derived compatibility view for service admission/export surfaces, not as a controller decision source. Station assignment `shortest_queue` uses live queue-lane occupied cells, lane reservations, and active station service occupancy.
 

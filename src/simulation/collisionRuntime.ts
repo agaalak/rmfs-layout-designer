@@ -8,6 +8,7 @@ import {
   envelopeOverlapsStaticRacks,
   envelopesOverlap,
   getRobotEnvelope,
+  getRobotEnvelopeAtCell,
   type RobotEnvelope
 } from "./collisionEnvelope";
 
@@ -20,8 +21,27 @@ export interface RuntimeCollisionIssue {
   message: string;
 }
 
+function cellForPose(robot: Robot): GridCell {
+  return {
+    row: Math.floor(robot.pose.y),
+    col: Math.floor(robot.pose.x)
+  };
+}
+
+function uniqueCells(cells: GridCell[]): GridCell[] {
+  return [...new Map(cells.map((cell) => [cellKey(cell), cell])).values()];
+}
+
 export function getRobotRuntimeEnvelope(layout: WarehouseLayout, state: SimulationState, robot: Robot): RobotEnvelope {
-  return getRobotEnvelope(layout, state, robot);
+  const logical = getRobotEnvelope(layout, state, robot);
+  const visualCell = cellForPose(robot);
+  if (cellKey(visualCell) === cellKey(robot.currentCell)) return logical;
+  const visual = getRobotEnvelopeAtCell(layout, state, robot, visualCell);
+  return {
+    ...logical,
+    occupiedCells: uniqueCells([...logical.occupiedCells, ...visual.occupiedCells]),
+    rackOccupiedCells: uniqueCells([...(logical.rackOccupiedCells ?? []), ...(visual.rackOccupiedCells ?? [])])
+  };
 }
 
 export function getAllRobotRuntimeEnvelopes(layout: WarehouseLayout, state: SimulationState): RobotEnvelope[] {

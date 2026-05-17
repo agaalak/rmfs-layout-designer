@@ -27,7 +27,7 @@ export interface RuntimeInspectors {
   queueLanes: Array<{
     queueLaneId: string;
     stationId: string;
-    cells: Array<{ queueIndex: number; cell: string; robotId?: string; taskId?: string }>;
+    cells: Array<{ queueIndex: number; cell: string; robotId?: string; taskId?: string; reservedRobotId?: string; reservedTaskId?: string }>;
     reservedRobotIds: string[];
     reservedTaskIds: string[];
     activeHeadRobotId?: string;
@@ -69,7 +69,9 @@ export function createRuntimeInspectors(layout: WarehouseLayout, simulation: Sim
       queueIndex: cell.queueIndex,
       cell: cellKey(cell.cell),
       robotId: cell.robotId,
-      taskId: cell.taskId
+      taskId: cell.taskId,
+      reservedRobotId: cell.reservedRobotId,
+      reservedTaskId: cell.reservedTaskId
     }));
     return {
       queueLaneId: lane.queueLaneId,

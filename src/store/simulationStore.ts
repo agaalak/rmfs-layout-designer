@@ -111,9 +111,10 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
       return errors;
     }
     set((current) => {
-      const state = initializeSimulation(layout, { ...current.config, ...(layout.simulationConfig ?? {}) });
+      const config = { ...current.config, ...(layout.simulationConfig ?? {}) };
+      const state = initializeSimulation(layout, config);
       recordInvariantIssues(layout, state, "initialize");
-      return { state };
+      return { state, config };
     });
     return [];
   },

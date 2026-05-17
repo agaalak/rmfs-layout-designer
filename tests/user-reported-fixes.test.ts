@@ -27,7 +27,8 @@ describe("user-reported stabilization fixes", () => {
     expect(small.racks.length).toBeGreaterThan(0);
     expect(small.racks.length).toBeGreaterThanOrEqual(12);
     expect(small.racks.length).toBeLessThanOrEqual(30);
-    expect(small.stations.length).toBeGreaterThanOrEqual(3);
+    expect(small.stations.length).toBeGreaterThanOrEqual(2);
+    expect(small.metadata.defaultLayoutSource).toBe("user_custom_layout_g3oeuj_0w3t");
     expect(small.chargingSpots.length).toBe(2);
     expect(small.parkingSpots.length).toBeGreaterThanOrEqual(4);
     expect(small.cells.filter((cell) => cell.allowRotation).length).toBeGreaterThanOrEqual(2);
@@ -81,6 +82,21 @@ describe("user-reported stabilization fixes", () => {
     expect(guarded.trafficDiagnostics.runtimeCollisionPreventionCount).toBeGreaterThan(0);
     expect(guarded.eventLog.some((event) => event.message.includes("Collision prevented"))).toBe(true);
     expect(detectRuntimeCollisions(layout, undefined, guarded).filter((issue) => issue.type === "robot_robot")).toHaveLength(0);
+  });
+
+  it("runtime collision detection uses visual pose cells, not only completed currentCell values", () => {
+    const layout = generateSmallDemoLayout();
+    const state = initializeSimulation(layout, { ...defaultSimulationConfig, robotCount: 2 });
+    const proposed = {
+      ...state,
+      robots: state.robots.map((robot, index) =>
+        index === 0
+          ? { ...robot, robotId: "robot_001", currentCell: { row: 20, col: 26 }, pose: { x: 26.5, y: 21.3, yawDeg: 180 }, state: "MOVING_LOADED" as const }
+          : { ...robot, robotId: "robot_002", currentCell: { row: 21, col: 26 }, pose: { x: 26.5, y: 21.5, yawDeg: 0 }, state: "SERVICING_AT_STATION" as const }
+      )
+    };
+
+    expect(detectRuntimeCollisions(layout, undefined, proposed).some((issue) => issue.type === "robot_robot")).toBe(true);
   });
 
   it("runtime collision guard blocks loaded 2x2 rack footprint overlap with blocked cells", () => {

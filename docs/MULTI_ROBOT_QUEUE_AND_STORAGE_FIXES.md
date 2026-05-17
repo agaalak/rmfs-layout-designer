@@ -161,6 +161,32 @@ flowchart TD
   Station --> Return["Return/drop at destination podServiceCell"]
 ```
 
+## 2026-05-16 Physical Queue Entry Admission Fix
+
+The user diagnostics bundle showed the remaining failure clearly: two loaded robots were allowed to occupy the same queue-head cell while another robot was in the station service cell. The queue had become an abstract capacity counter rather than a physical lane.
+
+Fixes added:
+
+- Queue dispatch reserves only the physical entry/tail cell of a lane.
+- Robots advance from queue cell to queue cell only when the next ordered cell is empty and unreserved.
+- A robot at queue head enters `station.cell` only when station service occupancy is clear.
+- Planned task generation now accounts for planned queue load before choosing stations.
+- Station assignment filters out compatible stations that are not reachable from the rack `podServiceCell`.
+- Runtime collision detection now includes the robot visual pose cell, not only the last completed `currentCell`.
+- The active simulation store adopts the layout-specific simulation config during Initialize, so Small Demo uses its shortest-queue and demo-speed settings when generating tasks.
+- The default Small Demo follows the current user-tested custom layout shape with two external pick stations.
+
+Updated verification:
+
+- `npm run typecheck`: passed.
+- `npm test -- --run`: passed, 20 files / 105 tests.
+- `npm run build`: passed.
+- `npm run test:e2e -- --workers=1`: passed, 19 tests.
+
+Known limitation:
+
+- This is still local queue admission and reservation control, not WHCA*, CBS, or full MAPF. Robots may wait conservatively instead of globally replanning through alternate aisles.
+
 ## Next Recommended Engineering Step
 
 Add a WHCA-style rolling-horizon planner only after more user testing confirms the corrected station/queue/pod/storage semantics remain stable.

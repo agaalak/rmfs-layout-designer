@@ -88,7 +88,7 @@ export function findPathToNearestRackApproach(layout: WarehouseLayout, startCell
   return findPathToRackServiceCell(layout, startCell, rack);
 }
 
-export function findPathToStationQueue(layout: WarehouseLayout, startCell: GridCell, station: Station, preferredQueueLaneId?: string): GridCell[] {
+export function findPathToStationQueue(layout: WarehouseLayout, startCell: GridCell, station: Station, preferredQueueLaneId?: string, targetQueueCell?: GridCell): GridCell[] {
   const graphLayout = layoutWithTemporaryCells(layout, [startCell]);
   const graph = buildRoadGraph(graphLayout);
   const lanes = stationQueueLanes(layout, station).sort((a, b) => {
@@ -100,9 +100,12 @@ export function findPathToStationQueue(layout: WarehouseLayout, startCell: GridC
     .map((lane) => {
       const pathToEntry = shortestPathBetweenSets(graph, [cellKey(startCell)], [cellKey(lane.entryCell)]);
       if (!pathToEntry) return undefined;
-      const lanePath = [...lane.cells.map((item) => item.cell), station.cell];
+      const targetIndex = targetQueueCell ? lane.cells.find((item) => cellKey(item.cell) === cellKey(targetQueueCell))?.queueIndex : undefined;
+      if (targetQueueCell && targetIndex === undefined) return undefined;
+      const laneCells = targetIndex === undefined ? lane.cells : lane.cells.filter((item) => item.queueIndex <= targetIndex);
+      const lanePath = targetIndex === undefined ? [...laneCells.map((item) => item.cell), station.cell] : laneCells.map((item) => item.cell);
       return {
-        distance: pathToEntry.distance + lane.cells.length,
+        distance: pathToEntry.distance + lanePath.length,
         path: appendWithoutDuplicate(nodesToCells(pathToEntry.path), lanePath)
       };
     })
