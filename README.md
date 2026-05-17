@@ -172,7 +172,7 @@ Recent logic fixes removed the old one-active-task-per-station dispatch gate. Mu
 
 The latest RAWSim-O alignment pass makes queue lanes the simulator's single queue source of truth. Dispatch reserves the physical queue entry cell, robots advance one ordered queue cell at a time, and station service starts only after the robot enters `station.cell`. Station `shortest_queue` scoring reads live queue-lane occupancy/reservations and active service occupancy, not stale station `waitingRobotIds`. Nearest-rack scoring routes to the same `podServiceCell` used by pickup execution. Generic shortest-path routing blocks station cells as pass-through shortcuts unless the route is specifically targeting station service.
 
-Traffic control now includes carried-rack envelopes for `1x1`, `1x2`, `2x1`, and `2x2` racks, simple capacity reservations for rotation-enabled cells and queue/service resources, conservative deadlock detection, runtime collision guards, and deterministic collision scenarios for regression tests. The runtime guard rolls back unsafe moves before visual overlap becomes accepted simulation state, logs collision-prevented warnings, and increments traffic diagnostics. It remains a practical early traffic-control layer, not a globally optimal MAPF planner.
+Traffic control now includes carried-rack envelopes for `1x1`, `1x2`, `2x1`, and `2x2` racks, simple capacity reservations for rotation-enabled cells and queue/service resources, conservative deadlock detection, a pre-move traffic ownership gate, runtime collision guards, and deterministic collision scenarios for regression tests. The pre-move gate is the primary safety layer: a robot must be granted ownership of the next cell/envelope before it interpolates toward that cell. If the cell is occupied or claimed, the robot waits outside it and the event log/debug inspectors explain the blocker. The runtime guard remains a failsafe for any state that still violates collision invariants.
 
 The operational chain now follows a simplified RMFS flow: order lines/SKUs -> rack selection -> station assignment -> robot assignment -> rack reservation -> empty travel -> lift -> optional rotation -> station queue/service -> inventory update -> storage/reallocation decision -> return/drop -> task/order completion.
 
@@ -246,7 +246,7 @@ The current verified pass used:
 - `npm test -- --run`
 - `npm run test:e2e -- --workers=1`
 
-Current verified status: build passes, typecheck passes, 20 unit/component test files pass with 105 tests, and the 19-test Playwright E2E suite runs without global interactive skips. E2E covers app load, manual canvas editing, object manipulation, import/export, Mode B candidate apply, Hybrid lock preservation, one completed Small Demo simulation task cycle, always-visible view controls, wheel zoom, space-drag pan, workflow navigation, responsive drawers, Debug / QA queue inspectors, and Simulation workflow availability.
+Current verified status: build passes, typecheck passes, 21 unit/component test files pass with 109 tests, and the 20-test Playwright E2E suite runs without global interactive skips. E2E covers app load, manual canvas editing, object manipulation, import/export, Mode B candidate apply, Hybrid lock preservation, one completed Small Demo simulation task cycle, always-visible view controls, wheel zoom, space-drag pan, workflow navigation, responsive drawers, Debug / QA queue inspectors, pre-move traffic ownership checks, and Simulation workflow availability.
 
 ## Controls
 

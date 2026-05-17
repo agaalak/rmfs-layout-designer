@@ -34,9 +34,15 @@ export function checkSimulationInvariants(layout: WarehouseLayout, state: Simula
   }
 
   const carriedRackCounts = new Map<string, string[]>();
+  const robotsByCurrentCell = new Map<string, string[]>();
+  const robotsByClaimedCell = new Map<string, string[]>();
   for (const robot of state.robots) {
     if (Number.isNaN(robot.pose.x) || Number.isNaN(robot.pose.y)) pushIssue(issues, "robot.pose_nan", `${robot.robotId} has an invalid NaN pose.`, [robot.robotId]);
     if (!inBounds(robot.currentCell, layout.grid)) pushIssue(issues, "robot.out_of_bounds", `${robot.robotId} is outside the layout grid.`, [robot.robotId]);
+    robotsByCurrentCell.set(cellKey(robot.currentCell), [...(robotsByCurrentCell.get(cellKey(robot.currentCell)) ?? []), robot.robotId]);
+    for (const claimCell of [robot.currentCell, robot.targetCell].filter(Boolean) as Array<typeof robot.currentCell>) {
+      robotsByClaimedCell.set(cellKey(claimCell), [...(robotsByClaimedCell.get(cellKey(claimCell)) ?? []), robot.robotId]);
+    }
     if (robot.assignedTaskId && !taskIds.has(robot.assignedTaskId)) pushIssue(issues, "robot.invalid_task", `${robot.robotId} references missing task ${robot.assignedTaskId}.`, [robot.robotId, robot.assignedTaskId]);
     if (robot.carryingRackId) {
       if (!rackIds.has(robot.carryingRackId)) pushIssue(issues, "robot.invalid_rack", `${robot.robotId} carries missing rack ${robot.carryingRackId}.`, [robot.robotId, robot.carryingRackId]);
@@ -49,6 +55,12 @@ export function checkSimulationInvariants(layout: WarehouseLayout, state: Simula
 
   for (const [rackId, carrierIds] of carriedRackCounts) {
     if (carrierIds.length > 1) pushIssue(issues, "rack.multiple_carriers", `Rack ${rackId} is carried by multiple robots.`, [rackId, ...carrierIds]);
+  }
+  for (const [currentCell, robots] of robotsByCurrentCell) {
+    if (robots.length > 1) pushIssue(issues, "robot.duplicate_current_cell", `Robots ${robots.join(", ")} share current cell ${currentCell}.`, robots);
+  }
+  for (const [claimedCell, robots] of robotsByClaimedCell) {
+    if (robots.length > 1) pushIssue(issues, "robot.duplicate_claimed_cell", `Robots ${robots.join(", ")} share current/target claim ${claimedCell}.`, robots, "warning");
   }
 
   for (const [rackId, rackState] of Object.entries(state.rackStates)) {

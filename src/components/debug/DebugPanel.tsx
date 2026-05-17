@@ -130,6 +130,24 @@ export function DebugPanel() {
         </section>
 
         <section className="mt-3 grid gap-2">
+          <div className="panel-title">Traffic Ownership Gate</div>
+          {inspectors.moveIntents.length === 0 ? <div className="empty-state">No movement intents recorded yet.</div> : null}
+          {inspectors.moveIntents.slice(-10).map((intent) => (
+            <div key={`${intent.timeSec}_${intent.robotId}_${intent.fromCell}_${intent.toCell}`} className={`rounded border p-2 text-xs ${intent.granted ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+              <div className="font-semibold">{intent.robotId} {intent.fromCell} {"->"} {intent.toCell} {intent.granted ? "granted" : "denied"}</div>
+              {!intent.granted ? <div>{intent.reason ?? "Denied by traffic ownership gate"}</div> : null}
+              <div className="text-muted-foreground">conflict {intent.conflictTarget ?? "n/a"} / t {intent.timeSec.toFixed(1)}s</div>
+            </div>
+          ))}
+          <div className="rounded border border-border bg-slate-50 p-2 text-xs">
+            <div className="font-semibold">Current occupied/claimed cells</div>
+            <div className="mt-1 max-h-20 overflow-auto text-muted-foreground">
+              {inspectors.trafficOccupancy.slice(0, 40).map((claim) => `${claim.cell}:${claim.ownerId}(${claim.kind})`).join(" | ") || "none"}
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-3 grid gap-2">
           <div className="panel-title">Simulation / Traffic / Controller Events</div>
           {simulationEvents.length === 0 ? <div className="empty-state">No simulation events captured yet.</div> : null}
           {simulationEvents.map((event) => (

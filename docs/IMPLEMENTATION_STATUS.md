@@ -42,10 +42,11 @@
 - Simulation control panel with initialize, generate tasks, create manual task, play/pause/step/reset, speed multiplier, display toggles, settings, event filters, and simulation config/log/metrics exports.
 - Traffic Control diagnostics section in Experimental Simulation Mode showing conflicts, waits, replans, deadlocks, active reservations, blocked/waiting robots, and traffic policy settings.
 - Carried-rack collision envelope module with unloaded/loaded robot envelopes, rectangular rack rotation support, blocked-cell/static-rack overlap detection, and reservation footprint conversion.
-- Runtime collision guard that checks simulation state after movement, includes visual pose-cell envelopes, prevents accepted same-cell, edge-swap, loaded-envelope, stored-rack, and blocked-cell overlaps, rolls unsafe moves back, and logs collision-prevented warning events.
+- RAWSim-O-aligned traffic move gate that checks cell/envelope ownership before movement. Robots request entry to the next cell; occupied/claimed cells, edge swaps, loaded-envelope overlaps, station cells, queue cells, pod service cells, rotation-enabled cells, parking, and charger conflicts are denied before interpolation.
+- Runtime collision guard remains as a debug/invariant failsafe after movement, includes visual pose-cell envelopes, rolls unsafe fallback states back, and logs collision-prevented warning events if the pre-move gate ever misses a case.
 - Built-in Debug / QA panel opened from the app header or `Ctrl+Shift+D`, with console/runtime capture, user action recording, simulation/traffic/controller event mirrors, performance samples, diagnostics export, and issue report export.
 - Top-level React ErrorBoundary that captures render failures into the debug store and displays a user-friendly fallback instead of leaving a blank app.
-- `window.__RMFS_DEBUG__` live diagnostics API and `window.__RMFS_TEST__` dev/test state inspection hook.
+- `window.__RMFS_DEBUG__` live diagnostics API and `window.__RMFS_TEST__` dev/test state inspection hook, including traffic occupancy, move intent, denied move, queue-lane, station-admission, reservation, and why-waiting inspectors.
 - Simulation invariant checker for robot envelope overlaps, invalid rack/storage ownership, duplicate active rack assignment, order over-fulfillment, queue overflow, invalid task references, invalid route cells, and invalid reservations.
 - Controller strategy registry with descriptions and decision traces for order, rack, station, robot, storage, charging, path planning, and traffic-control strategy decisions.
 - Resource reservation support for rotation-enabled cells, station queue slots, station service, storage locations, chargers, and parking.

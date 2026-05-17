@@ -6,6 +6,7 @@ import type { SimulationState } from "../models/simulation";
 import type { DebugEvent } from "./debugEvents";
 import { useDebugStore } from "./debugStore";
 import { cellKey } from "../utils/gridMath";
+import { trafficOccupancySnapshot } from "../simulation/trafficMoveGate";
 
 export interface DiagnosticsBundle {
   generatedAt: string;
@@ -59,6 +60,22 @@ export interface RuntimeInspectors {
     resourceId?: string;
     kind?: string;
     cells?: string[];
+  }>;
+  trafficOccupancy: Array<{
+    cell: string;
+    ownerId: string;
+    robotId?: string;
+    taskId?: string;
+    kind: string;
+  }>;
+  moveIntents: Array<{
+    timeSec: number;
+    robotId: string;
+    fromCell: string;
+    toCell: string;
+    granted: boolean;
+    reason?: string;
+    conflictTarget?: string;
   }>;
 }
 
@@ -138,7 +155,19 @@ export function createRuntimeInspectors(layout: WarehouseLayout, simulation: Sim
     stationAdmission,
     controllerDecisionTrace: simulation.eventLog.filter((event) => event.entityType === "controller" || event.details?.controller).slice(-80),
     whyWaiting,
-    reservationTimeline
+    reservationTimeline,
+    trafficOccupancy: trafficOccupancySnapshot(layout, simulation).map((claim) => ({
+      cell: cellKey(claim.cell),
+      ownerId: claim.ownerId,
+      robotId: claim.robotId,
+      taskId: claim.taskId,
+      kind: claim.kind
+    })),
+    moveIntents: (simulation.trafficDiagnostics.lastMoveIntents ?? []).map((intent) => ({
+      ...intent,
+      fromCell: cellKey(intent.fromCell),
+      toCell: cellKey(intent.toCell)
+    }))
   };
 }
 
@@ -259,6 +288,9 @@ export function installDebugGlobals(stores: {
     getStationAdmissionTrace: () => createRuntimeInspectors(stores.layout.getState().history.present, stores.simulation.getState().state).stationAdmission,
     getControllerDecisionTrace: () => createRuntimeInspectors(stores.layout.getState().history.present, stores.simulation.getState().state).controllerDecisionTrace,
     getReservationTimeline: () => createRuntimeInspectors(stores.layout.getState().history.present, stores.simulation.getState().state).reservationTimeline,
+    getTrafficOccupancy: () => createRuntimeInspectors(stores.layout.getState().history.present, stores.simulation.getState().state).trafficOccupancy,
+    getMoveIntents: () => createRuntimeInspectors(stores.layout.getState().history.present, stores.simulation.getState().state).moveIntents,
+    getDeniedMoves: () => createRuntimeInspectors(stores.layout.getState().history.present, stores.simulation.getState().state).moveIntents.filter((intent) => !intent.granted),
     getWhyWaiting: () => createRuntimeInspectors(stores.layout.getState().history.present, stores.simulation.getState().state).whyWaiting,
     exportDiagnostics: () => JSON.stringify(createDiagnosticsBundle(stores), null, 2),
     clearDiagnostics: () => useDebugStore.getState().clearDiagnostics(),
@@ -279,6 +311,9 @@ declare global {
       getStationAdmissionTrace: () => unknown[];
       getControllerDecisionTrace: () => unknown[];
       getReservationTimeline: () => unknown[];
+      getTrafficOccupancy: () => unknown[];
+      getMoveIntents: () => unknown[];
+      getDeniedMoves: () => unknown[];
       getWhyWaiting: () => unknown[];
       exportDiagnostics: () => string;
       clearDiagnostics: () => void;

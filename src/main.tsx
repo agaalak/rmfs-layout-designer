@@ -19,6 +19,9 @@ declare global {
       getQueueLaneInspector?: () => unknown[];
       getStationAdmissionTrace?: () => unknown[];
       getWhyWaiting?: () => unknown[];
+      getTrafficOccupancy?: () => unknown[];
+      getMoveIntents?: () => unknown[];
+      getDeniedMoves?: () => unknown[];
     };
   }
 }
@@ -32,7 +35,10 @@ if (debugEnabled) {
     simulation: useSimulationStore,
     getQueueLaneInspector: () => createRuntimeInspectors(useLayoutStore.getState().history.present, useSimulationStore.getState().state).queueLanes,
     getStationAdmissionTrace: () => createRuntimeInspectors(useLayoutStore.getState().history.present, useSimulationStore.getState().state).stationAdmission,
-    getWhyWaiting: () => createRuntimeInspectors(useLayoutStore.getState().history.present, useSimulationStore.getState().state).whyWaiting
+    getWhyWaiting: () => createRuntimeInspectors(useLayoutStore.getState().history.present, useSimulationStore.getState().state).whyWaiting,
+    getTrafficOccupancy: () => createRuntimeInspectors(useLayoutStore.getState().history.present, useSimulationStore.getState().state).trafficOccupancy,
+    getMoveIntents: () => createRuntimeInspectors(useLayoutStore.getState().history.present, useSimulationStore.getState().state).moveIntents,
+    getDeniedMoves: () => createRuntimeInspectors(useLayoutStore.getState().history.present, useSimulationStore.getState().state).moveIntents.filter((intent) => !intent.granted)
   };
   window.__RMFS_DEBUG_RECORD__ = recordDebugEvent;
   installDebugGlobals({ layout: useLayoutStore, ui: useUiStore, simulation: useSimulationStore });
@@ -52,6 +58,7 @@ if (debugEnabled) {
     };
   });
   installQaSessionRecorder({ layout: useLayoutStore, ui: useUiStore, simulation: useSimulationStore });
+  window.setTimeout(() => installDebugGlobals({ layout: useLayoutStore, ui: useUiStore, simulation: useSimulationStore }), 0);
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

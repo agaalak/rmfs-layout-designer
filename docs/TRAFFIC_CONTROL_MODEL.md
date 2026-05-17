@@ -10,7 +10,8 @@ Experimental Simulation Mode uses practical reservation-based traffic control. I
 - Visual movement is continuous interpolation between grid cells.
 - Unloaded robot footprint is one grid cell.
 - Loaded robot footprint includes the robot center cell plus the carried rack footprint.
-- Runtime collision enforcement runs after movement and rolls back unsafe moves before they become accepted visible simulation state.
+- Runtime traffic enforcement is pre-move first: each robot requests entry to the next cell/envelope and is denied before interpolation if that cell is already occupied or claimed.
+- Runtime collision enforcement still runs after movement as a failsafe/invariant guard, not as the primary traffic-control mechanism.
 - Racks are limited to the supported layout footprint sizes, currently up to `2x2` cells.
 - No turn-radius or acceleration envelope is modeled yet.
 - No CBS, WHCA*, or full MAPF solver is implemented in this pass.
@@ -58,6 +59,7 @@ This pass adds:
 - deterministic scenario runner support in `src/simulation/scenarioRunner.ts`
 - Traffic Control diagnostics in Simulation Mode
 - runtime collision guard in `src/simulation/collisionRuntime.ts`
+- deterministic pre-move traffic ownership gate in `src/simulation/trafficMoveGate.ts`
 - deterministic collision scenarios in `src/simulation/scenarios/collisionScenarios.ts`
 - simulation invariant checks in `src/simulation/invariants.ts`
 - Debug / QA diagnostics for traffic, resource, deadlock, controller, and invariant events
@@ -95,4 +97,10 @@ Traffic control now receives routes that reflect corrected RMFS semantics:
 - rotation reservations use cell resource IDs such as `rotation_cell_12:8`
 - legacy rotation-zone resources are import-only migration metadata
 
-This is still not WHCA*, CBS, or full MAPF. Reservation and runtime collision guards remain the current traffic-control layer.
+The current traffic-control layer is now:
+
+1. route/resource reservation as a planning hint,
+2. pre-move cell/envelope ownership gating as the authoritative entry decision,
+3. runtime collision guard as a failsafe.
+
+This is still not WHCA*, CBS, or full MAPF. It is a conservative local traffic manager: blocked robots wait safely outside occupied cells instead of entering and being repaired after the fact.

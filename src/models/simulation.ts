@@ -229,6 +229,8 @@ export interface TrafficDiagnostics {
   deadlockCount: number;
   deadlockRecoveryCount: number;
   failedDueToTrafficCount: number;
+  moveIntentCount: number;
+  deniedMoveCount: number;
   totalWaitTimeSec: number;
   robotWaitTimes: Record<string, number>;
   robotReplanAttempts: Record<string, number>;
@@ -236,6 +238,7 @@ export interface TrafficDiagnostics {
   repeatedConflictPairs: Record<string, number>;
   activeDeadlocks: Array<{ robotIds: string[]; detectedAtSec: number; reason: string }>;
   lastConflicts: Array<{ timeSec: number; robotId?: string; taskId?: string; resourceId?: string; message: string }>;
+  lastMoveIntents: Array<{ timeSec: number; robotId: string; fromCell: GridCell; toCell: GridCell; granted: boolean; reason?: string; conflictTarget?: string }>;
   runtimeCollisionPreventionCount: number;
   unsafeAttemptedMoves: Array<{ timeSec: number; robotId: string; message: string; cells?: GridCell[] }>;
 }
@@ -311,6 +314,8 @@ export const emptyTrafficDiagnostics: TrafficDiagnostics = {
   deadlockCount: 0,
   deadlockRecoveryCount: 0,
   failedDueToTrafficCount: 0,
+  moveIntentCount: 0,
+  deniedMoveCount: 0,
   totalWaitTimeSec: 0,
   robotWaitTimes: {},
   robotReplanAttempts: {},
@@ -318,6 +323,7 @@ export const emptyTrafficDiagnostics: TrafficDiagnostics = {
   repeatedConflictPairs: {},
   activeDeadlocks: [],
   lastConflicts: [],
+  lastMoveIntents: [],
   runtimeCollisionPreventionCount: 0,
   unsafeAttemptedMoves: []
 };

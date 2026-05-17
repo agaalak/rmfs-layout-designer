@@ -17,7 +17,7 @@ import type { SimulationRoutePlan, SimulationTask } from "../models/task";
 import { buildRoadGraph } from "../graph/graphBuilder";
 import { validateLayout } from "../validation/validateLayout";
 import { validateSimulationReadiness } from "../validation/validateSimulationReadiness";
-import { cellKey, manhattanMeters } from "../utils/gridMath";
+import { cellKey } from "../utils/gridMath";
 import { rackOccupiedCells } from "../utils/rackFootprint";
 import { ensureStorageLocations } from "../utils/storageLocations";
 import { stationQueueCells } from "../utils/queueLanes";
@@ -33,6 +33,7 @@ import { makeControllerDecisionTrace } from "./controllers/controllerRegistry";
 import { reserveTaskRouteWithTrafficPolicy } from "./trafficController";
 import { applyDeadlockRecovery, detectDeadlocks } from "./deadlockDetector";
 import { applyCollisionGuard } from "./collisionRuntime";
+import { applyTrafficMoveGate } from "./trafficMoveGate";
 import {
   chooseQueueLaneForStation,
   createQueueLaneStates,
@@ -67,13 +68,6 @@ const robotColors: Record<RobotState, string> = {
 
 function poseForCell(cell: GridCell) {
   return { x: cell.col + 0.5, y: cell.row + 0.5, yawDeg: 0 };
-}
-
-function yawBetween(from: GridCell, to: GridCell) {
-  if (to.col > from.col) return 90;
-  if (to.col < from.col) return 270;
-  if (to.row > from.row) return 180;
-  return 0;
 }
 
 function log(eventLog: SimulationEvent[], event: SimulationEvent): SimulationEvent[] {
@@ -497,44 +491,6 @@ function concatPaths(paths: GridCell[][]) {
 
 function planLoadedPath(route: SimulationRoutePlan) {
   return concatPaths([route.pathToPreStationRotationCell ?? [], route.loadedPathToStation]);
-}
-
-function advanceRobotOnPath(layout: WarehouseLayout, robot: Robot, deltaTimeSec: number): Robot {
-  if (movementComplete(robot)) return robot;
-  const speed = robot.state === "MOVING_EMPTY" ? robot.speedUnloadedMps : robot.speedLoadedMps;
-  let next = { ...robot };
-  let remainingMeters = speed * deltaTimeSec;
-  while (remainingMeters > 0 && !movementComplete(next)) {
-    const from = next.currentPath[next.routeIndex];
-    const to = next.currentPath[next.routeIndex + 1];
-    const segmentDistance = Math.max(0.001, manhattanMeters(from, to, layout.grid));
-    const remainingSegment = segmentDistance - next.segmentProgressM;
-    const consume = Math.min(remainingMeters, remainingSegment);
-    next.segmentProgressM += consume;
-    remainingMeters -= consume;
-    const t = Math.min(1, next.segmentProgressM / segmentDistance);
-    next = {
-      ...next,
-      pose: {
-        x: from.col + 0.5 + (to.col - from.col) * t,
-        y: from.row + 0.5 + (to.row - from.row) * t,
-        yawDeg: yawBetween(from, to)
-      },
-      targetCell: to,
-      pathProgress: next.routeIndex + t
-    };
-    if (next.segmentProgressM >= segmentDistance - 1e-6) {
-      next = {
-        ...next,
-        routeIndex: next.routeIndex + 1,
-        segmentProgressM: 0,
-        currentCell: to,
-        pose: poseForCell(to),
-        pathProgress: next.routeIndex + 1
-      };
-    }
-  }
-  return next;
 }
 
 function activePathWithWaits(
@@ -1255,13 +1211,15 @@ export function stepSimulation(layout: WarehouseLayout, state: SimulationState, 
   const queueAdvance = advanceQueueLaneRobots(normalized, next, robotColors.MOVING_LOADED);
   next = queueAdvance.state;
   for (const event of queueAdvance.events) next.eventLog = log(next.eventLog, event);
-  const beforeMove = structuredClone(next) as SimulationState;
   next.robots = next.robots.map((robot) => {
     const stationHeldRobot = holdRobotBeforeBlockedStationEntry(normalized, next, robot);
     if (stationHeldRobot !== robot) return stationHeldRobot;
-    if (["MOVING_EMPTY", "MOVING_LOADED", "RETURNING_RACK"].includes(robot.state)) return advanceRobotOnPath(normalized, robot, deltaTimeSec);
     return robot;
   });
+  const beforeMove = structuredClone(next) as SimulationState;
+  const moveGate = applyTrafficMoveGate(normalized, next, config, deltaTimeSec);
+  next = moveGate.state;
+  for (const event of moveGate.events) next.eventLog = log(next.eventLog, event);
   next = applyCollisionGuard(normalized, beforeMove, next, config);
   next = syncQueueLaneStates(normalized, next);
   next = handleRobotTransitions(normalized, next, config);
