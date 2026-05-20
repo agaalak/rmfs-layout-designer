@@ -15,8 +15,44 @@ import { useLayoutStore } from "../src/store/layoutStore";
 import { fitLayoutToCanvas, zoomAroundPointer } from "../src/utils/viewMath";
 import { findPathToNearestRackApproach } from "../src/simulation/pathPlanner";
 import { cellKey } from "../src/utils/gridMath";
+import {
+  deleteSavedLayout,
+  getDefaultLayoutId,
+  listSavedLayouts,
+  loadDefaultSavedLayout,
+  saveLayoutToBrowser,
+  setDefaultLayoutId
+} from "../src/importExport/layoutPersistence";
 
 describe("user-reported stabilization fixes", () => {
+  it("saves layouts in browser storage and optionally makes one the startup default", () => {
+    localStorage.clear();
+    const layout = { ...generateSmallDemoLayout(), layoutId: "layout_browser_saved_default", name: "Browser Saved Default" };
+
+    const summary = saveLayoutToBrowser(layout, true);
+
+    expect(summary.name).toBe("Browser Saved Default");
+    expect(getDefaultLayoutId()).toBe("layout_browser_saved_default");
+    expect(listSavedLayouts().map((item) => item.id)).toContain("layout_browser_saved_default");
+    expect(loadDefaultSavedLayout()?.name).toBe("Browser Saved Default");
+
+    deleteSavedLayout("layout_browser_saved_default");
+    expect(getDefaultLayoutId()).toBeUndefined();
+    expect(loadDefaultSavedLayout()).toBeUndefined();
+  });
+
+  it("can switch the startup default to an already saved layout", () => {
+    localStorage.clear();
+    const first = { ...generateSmallDemoLayout(), layoutId: "layout_saved_first", name: "Saved First" };
+    const second = { ...generateSmallDemoLayout(), layoutId: "layout_saved_second", name: "Saved Second" };
+    saveLayoutToBrowser(first, false);
+    saveLayoutToBrowser(second, false);
+
+    setDefaultLayoutId("layout_saved_second");
+
+    expect(loadDefaultSavedLayout()?.layoutId).toBe("layout_saved_second");
+  });
+
   it("small demo is smaller than the large stress demo and is simulation-ready", () => {
     const small = generateSmallDemoLayout();
     const large = generateLargeDemoLayout();

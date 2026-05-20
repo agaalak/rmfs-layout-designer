@@ -30,6 +30,7 @@ import { regenerateRackBins as regenerateRackBinsForRack } from "../utils/rackBi
 import { ensureStorageLocations } from "../utils/storageLocations";
 import { normalizeLayoutSemantics } from "../utils/layoutSemantics";
 import { makeQueueLaneFromCells, stationQueueCells } from "../utils/queueLanes";
+import { loadDefaultSavedLayout } from "../importExport/layoutPersistence";
 import { pushHistory, redoHistory, undoHistory, type HistoryState } from "./historyStore";
 
 function cloneLayout(layout: WarehouseLayout): WarehouseLayout {
@@ -242,6 +243,7 @@ interface LayoutState {
   updateRotation: (id: string, patch: Record<string, unknown>) => void;
   regenerateRackBins: (id: string) => void;
   updateLayoutMeta: (patch: Partial<WarehouseLayout>) => void;
+  markSavedBaseline: () => void;
   updateCell: (cell: GridCell, patch: Partial<LayoutCell>) => void;
   setCellDirections: (cell: GridCell, directions: Direction[]) => void;
   toggleSelectedLock: () => void;
@@ -285,7 +287,7 @@ function withoutSampleInventory(layout: WarehouseLayout): WarehouseLayout {
   };
 }
 
-const initialLayout = generateSmallDemoLayout();
+const initialLayout = loadDefaultSavedLayout() ?? generateSmallDemoLayout();
 
 function commit(history: HistoryState<WarehouseLayout>, layout: WarehouseLayout) {
   return pushHistory(history, ensureStorageLocations(normalizeLayoutSemantics(cloneLayout(layout))));
@@ -718,6 +720,10 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       if (patch.grid) next.physicalDimensions = deriveDimensions(patch.grid);
       return { history: commit(state.history, next) };
     }),
+  markSavedBaseline: () =>
+    set((state) => ({
+      history: { past: [], present: { ...state.history.present, modifiedAt: new Date().toISOString() }, future: [] }
+    })),
   updateCell: (cell, patch) =>
     set((state) => {
       const key = cellKey(cell);

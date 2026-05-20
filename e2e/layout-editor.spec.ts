@@ -215,6 +215,35 @@ test("exports and imports layout JSON without losing core objects", async ({ pag
   await expect(page.getByTestId("status-bar")).toContainText("Invalid JSON");
 });
 
+test("saves a browser layout and makes it the startup default", async ({ page }) => {
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await expect(page.getByTestId("layout-canvas")).toBeVisible();
+  await page.evaluate(() => {
+    const store = (window as unknown as { __RMFS_TEST__: any }).__RMFS_TEST__.layout.getState();
+    store.newLayout({ rows: 9, columns: 11 });
+    store.updateLayoutMeta({ name: "Saved Default Layout" });
+    store.addRack({ row: 2, col: 2 });
+    store.addStation({ row: 2, col: 6 });
+  });
+
+  await page.getByRole("button", { name: /Files workflow/ }).click();
+  await page.getByRole("button", { name: "Save and make default" }).click();
+  await expect(page.getByTestId("status-bar")).toContainText("set it as the startup default");
+  await expect(page.getByText("Saved Default Layout").first()).toBeVisible();
+  await expect(page.getByText("Default").first()).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByTestId("layout-canvas")).toBeVisible();
+  const state = await appState(page);
+  expect(state.layoutName).toBe("Saved Default Layout");
+  expect(state.rows).toBe(9);
+  expect(state.columns).toBe(11);
+  expect(state.racks).toBe(1);
+  expect(state.stations).toBe(1);
+  await page.evaluate(() => localStorage.clear());
+});
+
 test("generates Mode B candidates, previews, applies, and keeps layout editable", async ({ page }) => {
   await page.getByRole("button", { name: /Generate workflow/ }).click();
   await page.getByRole("button", { name: "Generate Mode B", exact: true }).click();

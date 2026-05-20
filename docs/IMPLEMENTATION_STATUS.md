@@ -23,12 +23,13 @@
 - Analytics modules for storage, distance, orientation, station balance, congestion proxy, performance estimates, and scoring.
 - Analyze workflow with summary cards, topic tabs, validation filters, heatmap controls, and analytics/report exports.
 - Toggleable heatmap overlay with distance, congestion, and validation modes.
-- Import/export for versioned layout JSON, analytics JSON, analytics CSV, Markdown report, PNG, and SVG.
+- Browser-local saved layouts with an optional startup default, plus import/export for versioned layout JSON, analytics JSON, analytics CSV, Markdown report, PNG, and SVG.
 - Import migration for older layouts without a schema version and user-friendly invalid JSON errors.
 - Status bar with selected tool/object/cell, hover row/column, zoom, validation error count, and unsaved changes indicator.
 - Keyboard shortcut help dialog, clear-layout confirmation, and load-demo dirty-layout confirmation.
 - Quick-start empty state with Start empty Mode A layout, Generate layout, and Load demo actions.
 - Default Small Demo layout on first load, plus optional Large Demo / stress layout actions.
+- Files workflow can save the current layout in browser storage, mark it as the startup default, load/delete saved layouts, clear the custom default, and still download portable JSON backups.
 - Always-visible floating canvas view controls for fit, reset, zoom, grid, labels, direction arrows, and heatmap across every workflow.
 - Pointer-centered mouse wheel zoom plus spacebar/middle/right-drag canvas panning.
 - Design/Simulation mode toggle that locks normal editing during simulator playback.

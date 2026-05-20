@@ -33,7 +33,7 @@ The main UI is organized by workflow instead of one overloaded toolbar:
 - Generate: Mode B generation, Hybrid generation, candidate preview, score comparison, and explicit apply.
 - Analyze: validation, analytics cards/tabs, heatmap controls, issue filters, and analytics/report exports.
 - Simulate: Experimental 2D playback controls, task setup, metrics, event log, and simulation exports.
-- Files: import/export layout JSON, PNG/SVG image export, Markdown report, and analytics exports.
+- Files: browser-saved layouts, optional startup default layout, import/export layout JSON, PNG/SVG image export, Markdown report, and analytics exports.
 
 The header shows the current layout, workflow, unsaved state, and a primary contextual action. The left workflow rail switches between workflows; the left toolbox appears for Design and is grouped into Navigation, Draw Cells, Place Resources, and Traffic.
 
@@ -44,6 +44,8 @@ On screens below the desktop editing breakpoint, the Design toolbox and workflow
 The first load uses **Small Demo**, a compact `22 x 30` RMFS layout based on the current user-tested custom layout: connected roads, 25 racks, 2 external pick stations, directional queue lanes, 2 chargers, 4 parking spots, rotation-enabled road cells, sample rack-bin inventory, and simulation defaults for a small robot/task count.
 
 The previous large `40 x 60` style layout remains available as **Large Demo** for stress and visual-density checks. Use the Design toolbar or the quick-start panel to switch demos.
+
+You can make your own layout the startup default from the **Files** workflow. Use **Save in browser** to keep a local copy on this machine, or **Save and make default** to load that layout automatically on the next fresh visit. **Save JSON** still downloads a portable layout file for backups, sharing, or moving the layout to another browser.
 
 ## Modes
 
