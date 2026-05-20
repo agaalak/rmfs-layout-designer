@@ -296,7 +296,7 @@ test("experimental simulation can complete one simple task cycle", async ({ page
   const completed = await page.evaluate(() => {
     const api = (window as unknown as { __RMFS_TEST__: any }).__RMFS_TEST__;
     const layout = api.layout.getState().history.present;
-    for (let i = 0; i < 140; i += 1) {
+    for (let i = 0; i < 240; i += 1) {
       api.simulation.getState().step(layout, 1);
       if (api.simulation.getState().state.completedTasks.length > 0) break;
     }

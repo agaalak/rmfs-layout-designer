@@ -29,9 +29,15 @@ import { rackOccupiedCells } from "../utils/rackFootprint";
 import { regenerateRackBins as regenerateRackBinsForRack } from "../utils/rackBins";
 import { ensureStorageLocations } from "../utils/storageLocations";
 import { normalizeLayoutSemantics } from "../utils/layoutSemantics";
-import { makeQueueLaneFromCells, stationQueueCells } from "../utils/queueLanes";
+import { stationQueueCells } from "../utils/queueLanes";
 import { loadDefaultSavedLayout } from "../importExport/layoutPersistence";
 import { pushHistory, redoHistory, undoHistory, type HistoryState } from "./historyStore";
+
+type RackPlacementDefaults = Pick<Rack, "footprintWidthM" | "footprintDepthM" | "currentOrientationDeg">;
+type RoadCellDefaults = Pick<
+  LayoutCell,
+  "allowedDirections" | "allowRotation" | "supportedRotationOrientationsDeg" | "rotationTimeSec" | "rotationCapacity" | "allowedRotationRackTypes"
+>;
 
 function cloneLayout(layout: WarehouseLayout): WarehouseLayout {
   return structuredClone(layout);
@@ -80,7 +86,7 @@ function lockedObjectAtCell(layout: WarehouseLayout, cell: GridCell) {
   );
 }
 
-function upsertCell(layout: WarehouseLayout, cell: GridCell, cellType: CellType): WarehouseLayout {
+function upsertCell(layout: WarehouseLayout, cell: GridCell, cellType: CellType, roadDefaults?: RoadCellDefaults): WarehouseLayout {
   if (!inBounds(cell, layout.grid)) return layout;
   const map = cellMap(layout);
   const key = cellKey(cell);
@@ -93,14 +99,14 @@ function upsertCell(layout: WarehouseLayout, cell: GridCell, cellType: CellType)
       row: cell.row,
       col: cell.col,
       cellType,
-      allowedDirections: existing?.allowedDirections ?? allDirections,
+      allowedDirections: existing?.allowedDirections ?? (cellType === "ROAD" ? roadDefaults?.allowedDirections : undefined) ?? allDirections,
       zoneId: existing?.zoneId,
     locked: existing?.locked,
-    allowRotation: existing?.allowRotation,
-    supportedRotationOrientationsDeg: existing?.supportedRotationOrientationsDeg,
-    rotationTimeSec: existing?.rotationTimeSec,
-    rotationCapacity: existing?.rotationCapacity,
-    allowedRotationRackTypes: existing?.allowedRotationRackTypes
+    allowRotation: existing?.allowRotation ?? (cellType === "ROAD" ? roadDefaults?.allowRotation : undefined),
+    supportedRotationOrientationsDeg: existing?.supportedRotationOrientationsDeg ?? (cellType === "ROAD" ? roadDefaults?.supportedRotationOrientationsDeg : undefined),
+    rotationTimeSec: existing?.rotationTimeSec ?? (cellType === "ROAD" ? roadDefaults?.rotationTimeSec : undefined),
+    rotationCapacity: existing?.rotationCapacity ?? (cellType === "ROAD" ? roadDefaults?.rotationCapacity : undefined),
+    allowedRotationRackTypes: existing?.allowedRotationRackTypes ?? (cellType === "ROAD" ? roadDefaults?.allowedRotationRackTypes : undefined)
     });
   }
   return { ...layout, cells: [...map.values()] };
@@ -153,17 +159,31 @@ function removeObjectsAtCell(layout: WarehouseLayout, cell: GridCell): Warehouse
 
 const sampleSkus = ["SKU-HOT-001", "SKU-HOT-002", "SKU-WARM-001", "SKU-WARM-002", "SKU-COLD-001", "SKU-COLD-002"];
 
-function makeDefaultRack(index: number, homeCell: GridCell): Rack {
+const initialRackPlacementDefaults: RackPlacementDefaults = {
+  footprintWidthM: 1.2,
+  footprintDepthM: 1.2,
+  currentOrientationDeg: 0
+};
+
+const initialRoadCellDefaults: RoadCellDefaults = {
+  allowedDirections: allDirections,
+  allowRotation: false,
+  supportedRotationOrientationsDeg: [0, 90, 180, 270],
+  rotationTimeSec: 6,
+  rotationCapacity: 1
+};
+
+function makeDefaultRack(index: number, homeCell: GridCell, defaults: RackPlacementDefaults = initialRackPlacementDefaults): Rack {
   const rackId = nextSequentialId("rack", index);
   return {
     id: makeId("rack"),
     rackId,
     rackTypeId: "two_face_mobile_rack",
     homeCell,
-    footprintWidthM: 1,
-    footprintDepthM: 1,
+    footprintWidthM: defaults.footprintWidthM,
+    footprintDepthM: defaults.footprintDepthM,
     heightM: 1.8,
-    currentOrientationDeg: 0,
+    currentOrientationDeg: defaults.currentOrientationDeg,
     allowedOrientationsDeg: [0, 90, 180, 270],
     storageZoneId: "hot",
     demandClass: "HOT",
@@ -207,6 +227,8 @@ interface LayoutState {
   clipboard: SelectedObjectRef[];
   generationParams: GenerationParams;
   candidateComparison?: CandidateComparisonState;
+  rackPlacementDefaults: RackPlacementDefaults;
+  roadCellDefaults: RoadCellDefaults;
   setLayout: (layout: WarehouseLayout) => void;
   newLayout: (params?: Partial<GenerationParams>) => void;
   generateModeB: (params: GenerationParams) => void;
@@ -300,6 +322,8 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   clipboard: [],
   generationParams: defaultGenerationParams,
   candidateComparison: undefined,
+  rackPlacementDefaults: initialRackPlacementDefaults,
+  roadCellDefaults: initialRoadCellDefaults,
   setLayout: (layout) => set((state) => ({ history: commit(state.history, { ...layout, modifiedAt: new Date().toISOString() }), selected: [], selectedCell: undefined, candidateComparison: undefined })),
   newLayout: (params) =>
     set((state) => ({
@@ -442,7 +466,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     set((state) => {
       if (lockedObjectAtCell(state.history.present, cell)) return {};
       const current = removeObjectsAtCell(state.history.present, cell);
-      return { history: commit(state.history, upsertCell(current, cell, cellType)) };
+      return { history: commit(state.history, upsertCell(current, cell, cellType, state.roadCellDefaults)) };
     }),
   eraseCell: (cell) =>
     set((state) => {
@@ -454,7 +478,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     set((state) => {
       if (lockedObjectAtCell(state.history.present, cell)) return {};
       let layout = removeObjectsAtCell(state.history.present, cell);
-      const rack = makeDefaultRack(layout.racks.length, cell);
+      const rack = makeDefaultRack(layout.racks.length, cell, state.rackPlacementDefaults);
       layout = markRackCells(layout, rack);
       return {
         history: commit(state.history, { ...layout, racks: [...layout.racks, rack] }),
@@ -467,13 +491,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       if (lockedObjectAtCell(state.history.present, cell)) return {};
       const layout = upsertCell(removeObjectsAtCell(state.history.present, cell), cell, "STATION");
       const station = makeDefaultStation(layout.stations.length, cell);
-      const queueCells = [{ row: Math.max(0, cell.row - 1), col: cell.col }];
-      const lane = makeQueueLaneFromCells(`queue_${station.id}_001`, station.id, queueCells, cell);
-      const stationWithQueue = lane ? { ...station, queueLaneIds: [lane.queueLaneId] } : station;
-      let next = { ...layout, stations: [...layout.stations, stationWithQueue], queueLanes: lane ? [...layout.queueLanes, lane] : layout.queueLanes };
-      lane?.cells.forEach((queue) => {
-        next = upsertCell(next, queue.cell, "QUEUE");
-      });
+      const next = { ...layout, stations: [...layout.stations, station] };
       return { history: commit(state.history, next), selected: [{ kind: "station", id: station.id }], selectedCell: undefined };
     }),
   addCharger: (cell, size = 1) =>
@@ -632,7 +650,17 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
           };
         }
       }
-      return { history: commit(state.history, layout) };
+      const rotatedRack = layout.racks.find((rack) => state.selected.some((ref) => ref.kind === "rack" && ref.id === rack.id));
+      return {
+        history: commit(state.history, layout),
+        rackPlacementDefaults: rotatedRack
+          ? {
+              footprintWidthM: rotatedRack.footprintWidthM,
+              footprintDepthM: rotatedRack.footprintDepthM,
+              currentOrientationDeg: rotatedRack.currentOrientationDeg
+            }
+          : state.rackPlacementDefaults
+      };
     }),
   copySelected: () => set((state) => ({ clipboard: state.selected })),
   pasteClipboard: () =>
@@ -669,7 +697,15 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
         racks: layout.racks.map((rack) => (rack.id === id ? nextRack : rack))
       };
       if (footprintChanged) layout = markRackCells(layout, nextRack);
-      return { history: commit(state.history, layout) };
+      const nextRackDefaults =
+        footprintChanged || patch.footprintWidthM !== undefined || patch.footprintDepthM !== undefined || patch.currentOrientationDeg !== undefined
+          ? {
+              footprintWidthM: nextRack.footprintWidthM,
+              footprintDepthM: nextRack.footprintDepthM,
+              currentOrientationDeg: nextRack.currentOrientationDeg
+            }
+          : state.rackPlacementDefaults;
+      return { history: commit(state.history, layout), rackPlacementDefaults: nextRackDefaults };
     }),
   updateStation: (id, patch) =>
     set((state) => {
@@ -740,9 +776,22 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       } else {
         map.set(key, { ...existing, ...patch, row: cell.row, col: cell.col });
       }
+      const nextCell = patch.cellType === "EMPTY" ? undefined : map.get(key);
+      const nextRoadDefaults =
+        nextCell && nextCell.cellType === "ROAD"
+          ? {
+              allowedDirections: nextCell.allowedDirections ?? state.roadCellDefaults.allowedDirections,
+              allowRotation: nextCell.allowRotation ?? false,
+              supportedRotationOrientationsDeg: nextCell.supportedRotationOrientationsDeg ?? state.roadCellDefaults.supportedRotationOrientationsDeg,
+              rotationTimeSec: nextCell.rotationTimeSec ?? state.roadCellDefaults.rotationTimeSec,
+              rotationCapacity: nextCell.rotationCapacity ?? state.roadCellDefaults.rotationCapacity,
+              allowedRotationRackTypes: nextCell.allowedRotationRackTypes
+            }
+          : state.roadCellDefaults;
       return {
         history: commit(state.history, { ...state.history.present, cells: [...map.values()] }),
-        selectedCell: cell
+        selectedCell: cell,
+        roadCellDefaults: nextRoadDefaults
       };
     }),
   setCellDirections: (cell, directions) =>
@@ -751,7 +800,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       const map = cellMap(state.history.present);
       const existing = map.get(key);
       if (existing?.locked) return {};
-      map.set(key, {
+      const nextCell = {
         row: cell.row,
         col: cell.col,
         cellType: existing?.cellType ?? "ROAD",
@@ -763,10 +812,21 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
         rotationTimeSec: existing?.rotationTimeSec,
         rotationCapacity: existing?.rotationCapacity,
         allowedRotationRackTypes: existing?.allowedRotationRackTypes
-      });
+      };
+      map.set(key, nextCell);
       return {
         history: commit(state.history, { ...state.history.present, cells: [...map.values()] }),
-        selectedCell: cell
+        selectedCell: cell,
+        roadCellDefaults: nextCell.cellType === "ROAD"
+          ? {
+              allowedDirections: directions,
+              allowRotation: nextCell.allowRotation ?? false,
+              supportedRotationOrientationsDeg: nextCell.supportedRotationOrientationsDeg ?? state.roadCellDefaults.supportedRotationOrientationsDeg,
+              rotationTimeSec: nextCell.rotationTimeSec ?? state.roadCellDefaults.rotationTimeSec,
+              rotationCapacity: nextCell.rotationCapacity ?? state.roadCellDefaults.rotationCapacity,
+              allowedRotationRackTypes: nextCell.allowedRotationRackTypes
+            }
+          : state.roadCellDefaults
       };
     }),
   toggleSelectedLock: () =>

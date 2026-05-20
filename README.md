@@ -67,12 +67,14 @@ Schema `0.3.0` corrects the physical RMFS semantics:
 
 ## Grid Size And Rack Footprint
 
-Grid cells are defined in meters, for example `1.2 m x 1.2 m` or `1.0 m x 1.0 m`. The warehouse can be edited by rows and columns. The physical size is derived as:
+Grid cells are defined in meters. New layouts default to `1.5 m x 1.5 m` cells, and new manual racks default to a `1.2 m x 1.2 m` footprint. The warehouse can be edited by rows and columns. The physical size is derived as:
 
 - `width = columns * cell width`
 - `depth = rows * cell depth`
 
 Rack footprints are converted to occupied grid cells with `ceil(footprint / cell size)`. Supported rack footprints are `1x1`, `1x2`, `2x1`, and `2x2` cells. Rectangular rack footprints rotate with the rack when orientation changes by 90 degrees. Larger footprints are rejected with a validation error.
+
+Manual editing remembers the last rack geometry you changed. If you edit a rack footprint or orientation, subsequently placed racks inherit that footprint and orientation until you change another rack. The Direction/Traffic tool works the same way for road/aisle cells: newly drawn road cells inherit the last edited movement directions and rotation settings.
 
 ## Charging And Parking
 

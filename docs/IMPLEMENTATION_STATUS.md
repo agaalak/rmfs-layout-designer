@@ -131,6 +131,9 @@
 - RAWSim-O alignment follow-up added graph routing context so generic shortest-path calls block station cells as pass-through shortcuts while assigned station-service routing can still target `station.cell`.
 - RAWSim-O alignment follow-up added Debug / QA inspectors and globals for queue lanes, station admission, waiting reasons, controller decision traces, and reservation snippets.
 - Current custom Small Demo default now matches the user-tested `layout_g3oeuj_0w3t` shape: two external pick stations, directional queue lanes, 25 racks, 2 chargers, 4 parking spots, and compact simulation settings that complete a demo cycle reliably.
+- New layouts default to `1.5 m x 1.5 m` grid cells and new racks default to a `1.2 m x 1.2 m` footprint.
+- Manual station placement creates only the station service cell. Queue lanes remain separate directional waiting cells and are not bundled into newly placed station objects.
+- Manual editing now remembers the last edited rack footprint/orientation and the last edited road/aisle direction and rotation settings for subsequently placed racks or drawn road cells.
 - Queue admission follow-up fixed stacked queue-head robots by reserving the physical queue entry cell only, using planned queue load during order/task generation, filtering unreachable station candidates, and applying the layout simulation config to the active UI store before task generation.
 
 ## Test Status

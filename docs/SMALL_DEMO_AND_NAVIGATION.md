@@ -5,7 +5,7 @@
 Small Demo is the default first-load layout. It is intentionally compact:
 
 - `22 x 30` grid
-- `1.2 m x 1.2 m` cells
+- `1.5 m x 1.5 m` cells
 - 3 stations
 - 2 chargers
 - 4 parking spots
