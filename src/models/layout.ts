@@ -1,6 +1,8 @@
 import type { ChargingSpot } from "./charging";
+import type { DirectedNeighborLink } from "./direction";
 import type { GridConfig, LayoutCell, LayoutMode, PhysicalDimensions } from "./grid";
 import type { ParkingSpot } from "./parking";
+import type { QueuePoint } from "./queuePoint";
 import type { QueueLane } from "./queue";
 import type { Rack } from "./rack";
 import type { RotationZone } from "./rotation";
@@ -64,9 +66,12 @@ export interface WarehouseLayout {
   grid: GridConfig;
   physicalDimensions: PhysicalDimensions;
   cells: LayoutCell[];
+  directedLinks: DirectedNeighborLink[];
   racks: Rack[];
   storageLocations: StorageLocation[];
   stations: Station[];
+  queuePoints: QueuePoint[];
+  /** @deprecated Queue lanes are migration metadata only; runtime uses queuePoints. */
   queueLanes: QueueLane[];
   chargingSpots: ChargingSpot[];
   parkingSpots: ParkingSpot[];

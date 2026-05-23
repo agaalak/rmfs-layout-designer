@@ -4,7 +4,6 @@ import { allDirections } from "../models/grid";
 import type { ChargingSpot } from "../models/charging";
 import type { GenerationParams, LayoutCandidateSummary, SelectedObjectRef, WarehouseLayout } from "../models/layout";
 import type { ParkingSpot } from "../models/parking";
-import type { QueueLane } from "../models/queue";
 import type { Rack } from "../models/rack";
 import type { ServiceSide, Station } from "../models/station";
 import { serviceSideOrientation } from "../models/station";
@@ -29,7 +28,8 @@ import { rackOccupiedCells } from "../utils/rackFootprint";
 import { regenerateRackBins as regenerateRackBinsForRack } from "../utils/rackBins";
 import { ensureStorageLocations } from "../utils/storageLocations";
 import { normalizeLayoutSemantics } from "../utils/layoutSemantics";
-import { stationQueueCells } from "../utils/queueLanes";
+import { deriveDirectedLinksFromCells, setOutgoingLinksForCell } from "../utils/directionLinks";
+import { stationQueuePointCells } from "../utils/queuePoints";
 import { loadDefaultSavedLayout } from "../importExport/layoutPersistence";
 import { pushHistory, redoHistory, undoHistory, type HistoryState } from "./historyStore";
 
@@ -52,7 +52,7 @@ function objectCells(layout: WarehouseLayout, objectId?: string): GridCell[] {
   const rack = layout.racks.find((item) => item.id === objectId);
   if (rack) return rackOccupiedCells(rack, layout.grid);
   const station = layout.stations.find((item) => item.id === objectId);
-  if (station) return [station.cell, ...stationQueueCells(layout, station)];
+  if (station) return [station.cell, ...stationQueuePointCells(layout, station)];
   const charger = layout.chargingSpots.find((item) => item.id === objectId);
   if (charger) return charger.cells;
   const parking = layout.parkingSpots.find((item) => item.id === objectId);
@@ -80,7 +80,7 @@ function lockedObjectAtCell(layout: WarehouseLayout, cell: GridCell) {
   const key = cellKey(cell);
   return (
     layout.racks.some((rack) => rack.locked && rackOccupiedCells(rack, layout.grid).some((item) => cellKey(item) === key)) ||
-    layout.stations.some((station) => station.locked && [station.cell, ...stationQueueCells(layout, station)].some((item) => cellKey(item) === key)) ||
+    layout.stations.some((station) => station.locked && [station.cell, ...stationQueuePointCells(layout, station)].some((item) => cellKey(item) === key)) ||
     layout.chargingSpots.some((charger) => charger.locked && charger.cells.some((item) => cellKey(item) === key)) ||
     layout.parkingSpots.some((parking) => parking.locked && cellKey(parking.cell) === key)
   );
@@ -109,7 +109,8 @@ function upsertCell(layout: WarehouseLayout, cell: GridCell, cellType: CellType,
     allowedRotationRackTypes: existing?.allowedRotationRackTypes ?? (cellType === "ROAD" ? roadDefaults?.allowedRotationRackTypes : undefined)
     });
   }
-  return { ...layout, cells: [...map.values()] };
+  const cells = [...map.values()];
+  return { ...layout, cells, directedLinks: deriveDirectedLinksFromCells({ grid: layout.grid, cells }) };
 }
 
 function clearRackCells(layout: WarehouseLayout, rack: Rack): WarehouseLayout {
@@ -145,7 +146,7 @@ function removeObjectsAtCell(layout: WarehouseLayout, cell: GridCell): Warehouse
   racksToRemove.flatMap((rack) => rackOccupiedCells(rack, layout.grid)).forEach((item) => {
     next = upsertCell(next, item, "EMPTY");
   });
-  stationsToRemove.flatMap((station) => [station.cell, ...stationQueueCells(layout, station)]).forEach((item) => {
+  stationsToRemove.flatMap((station) => [station.cell, ...stationQueuePointCells(layout, station)]).forEach((item) => {
     next = upsertCell(next, item, "EMPTY");
   });
   chargersToRemove.flatMap((charger) => charger.cells).forEach((item) => {
@@ -216,6 +217,12 @@ function makeDefaultStation(index: number, cell: GridCell): Station {
     requiredRackOrientationDeg: serviceSideOrientation[side],
     targetServiceTimeSec: 30,
     capacity: 1,
+    queuePolicy: {
+      requireQueuePointVisit: false,
+      queuePointSelectionStrategy: "nearest_feasible",
+      sharedQueuePointsAllowed: true,
+      stationCapacity: 1
+    },
     queueLaneIds: []
   };
 }
@@ -313,6 +320,10 @@ const initialLayout = loadDefaultSavedLayout() ?? generateSmallDemoLayout();
 
 function commit(history: HistoryState<WarehouseLayout>, layout: WarehouseLayout) {
   return pushHistory(history, ensureStorageLocations(normalizeLayoutSemantics(cloneLayout(layout))));
+}
+
+function refreshDirectedLinks(layout: WarehouseLayout): WarehouseLayout {
+  return { ...layout, directedLinks: deriveDirectedLinksFromCells({ grid: layout.grid, cells: layout.cells }) };
 }
 
 export const useLayoutStore = create<LayoutState>((set, get) => ({
@@ -594,13 +605,13 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
         if (ref.kind === "station") {
           const station = layout.stations.find((item) => item.id === ref.id);
           if (station?.locked) continue;
-          if (station) {
-            layout = upsertCell(layout, station.cell, "EMPTY");
-            stationQueueCells(layout, station).forEach((cell) => {
-              layout = upsertCell(layout, cell, "EMPTY");
-            });
-          }
-          layout = { ...layout, stations: layout.stations.filter((item) => item.id !== ref.id), queueLanes: layout.queueLanes.filter((lane) => lane.stationId !== ref.id) };
+          if (station) layout = upsertCell(layout, station.cell, "EMPTY");
+          layout = {
+            ...layout,
+            stations: layout.stations.filter((item) => item.id !== ref.id),
+            queuePoints: (layout.queuePoints ?? []).filter((point) => !point.stationIds.includes(ref.id)),
+            queueLanes: []
+          };
         }
         if (ref.kind === "charger") {
           const charger = layout.chargingSpots.find((item) => item.id === ref.id);
@@ -789,7 +800,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
             }
           : state.roadCellDefaults;
       return {
-        history: commit(state.history, { ...state.history.present, cells: [...map.values()] }),
+        history: commit(state.history, refreshDirectedLinks({ ...state.history.present, cells: [...map.values()] })),
         selectedCell: cell,
         roadCellDefaults: nextRoadDefaults
       };
@@ -814,8 +825,12 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
         allowedRotationRackTypes: existing?.allowedRotationRackTypes
       };
       map.set(key, nextCell);
+      const nextLayout = { ...state.history.present, cells: [...map.values()] };
       return {
-        history: commit(state.history, { ...state.history.present, cells: [...map.values()] }),
+        history: commit(state.history, {
+          ...nextLayout,
+          directedLinks: setOutgoingLinksForCell(nextLayout.directedLinks ?? [], cell, directions, nextLayout.cells, nextLayout.grid)
+        }),
         selectedCell: cell,
         roadCellDefaults: nextCell.cellType === "ROAD"
           ? {

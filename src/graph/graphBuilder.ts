@@ -3,6 +3,7 @@ import { allDirections, oppositeDirection, traversableCellTypes } from "../model
 import type { WarehouseLayout } from "../models/layout";
 import type { Rack } from "../models/rack";
 import type { RmfsWaypoint, WaypointType } from "../models/rmfsDomain";
+import { deriveDirectedLinksFromCells, directionForNeighbor } from "../utils/directionLinks";
 import { cellKey, inBounds, neighbor } from "../utils/gridMath";
 import { rackOccupiedCells } from "../utils/rackFootprint";
 
@@ -33,12 +34,17 @@ function waypointTypeForCell(cellType: string): WaypointType {
   return "road";
 }
 
+function queuePointKeySet(layout: WarehouseLayout) {
+  return new Set((layout.queuePoints ?? []).map((point) => cellKey(point.cell)));
+}
+
 export function buildCellMap(layout: WarehouseLayout) {
   return new Map(layout.cells.map((cell) => [cellKey(cell), cell]));
 }
 
 export function buildRoutingWaypoints(layout: WarehouseLayout, options: RoadGraphOptions = {}): Map<GraphNode, RmfsWaypoint> {
   const waypoints = new Map<GraphNode, RmfsWaypoint>();
+  const queuePoints = queuePointKeySet(layout);
   for (const cell of layout.cells) {
     if (!traversableCellTypes.has(cell.cellType)) continue;
     if (cell.cellType === "STATION" && options.stationMode === "blocked") continue;
@@ -46,7 +52,7 @@ export function buildRoutingWaypoints(layout: WarehouseLayout, options: RoadGrap
     waypoints.set(waypointId, {
       waypointId,
       cell: { row: cell.row, col: cell.col },
-      waypointType: waypointTypeForCell(cell.cellType),
+      waypointType: queuePoints.has(waypointId) ? "queue" : waypointTypeForCell(cell.cellType),
       allowedDirections: cell.allowedDirections ?? allDirections,
       neighborWaypointIds: [],
       travelCost: 1
@@ -96,7 +102,16 @@ export function buildRoadGraph(layout: WarehouseLayout, options: RoadGraphOption
   for (const waypoint of waypoints.values()) {
     const from = waypoint.waypointId;
     const sourceCell = cellMap.get(from);
-    for (const direction of waypoint.allowedDirections as Direction[]) {
+    const hasCellLocalDirectionEdits = layout.cells.some((cell) => (cell.allowedDirections ?? allDirections).length < allDirections.length);
+    const directedLinks = (hasCellLocalDirectionEdits ? deriveDirectedLinksFromCells(layout) : layout.directedLinks)?.filter((link) => link.enabled);
+    const linkDirections =
+      directedLinks && directedLinks.length > 0
+        ? directedLinks
+            .filter((link) => cellKey(link.fromCell) === from)
+            .map((link) => directionForNeighbor(link.fromCell, link.toCell))
+            .filter((direction): direction is Direction => Boolean(direction))
+        : (waypoint.allowedDirections as Direction[]);
+    for (const direction of linkDirections) {
       const sourceConnector = terminalConnectors.get(from);
       if (sourceCell && terminalRoutingCellTypes.has(sourceCell.cellType) && sourceConnector !== direction) continue;
       const cell = waypoint.cell;

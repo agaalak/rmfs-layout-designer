@@ -25,6 +25,17 @@ export interface DiagnosticsBundle {
 }
 
 export interface RuntimeInspectors {
+  queuePoints: Array<{
+    queuePointId: string;
+    cell: string;
+    stationIds: string[];
+    appliesToAllStations: boolean;
+    occupiedRobotId?: string;
+    occupiedTaskId?: string;
+    reservedRobotIds: string[];
+    reservedTaskIds: string[];
+    capacity: number;
+  }>;
   queueLanes: Array<{
     queueLaneId: string;
     stationId: string;
@@ -80,6 +91,20 @@ export interface RuntimeInspectors {
 }
 
 export function createRuntimeInspectors(layout: WarehouseLayout, simulation: SimulationState): RuntimeInspectors {
+  const queuePoints = (layout.queuePoints ?? []).map((point) => {
+    const runtime = simulation.queuePointStates?.[point.queuePointId];
+    return {
+      queuePointId: point.queuePointId,
+      cell: cellKey(point.cell),
+      stationIds: point.stationIds,
+      appliesToAllStations: point.appliesToAllStations,
+      occupiedRobotId: runtime?.occupiedRobotId,
+      occupiedTaskId: runtime?.occupiedTaskId,
+      reservedRobotIds: runtime?.reservedRobotIds ?? [],
+      reservedTaskIds: runtime?.reservedTaskIds ?? [],
+      capacity: runtime?.capacity ?? point.capacity
+    };
+  });
   const queueLanes = (layout.queueLanes ?? []).map((lane) => {
     const runtime = simulation.queueLaneStates[lane.queueLaneId];
     const cells = (runtime?.occupiedCells ?? lane.cells.map((item) => ({ queueIndex: item.queueIndex, cell: item.cell }))).map((cell) => ({
@@ -130,7 +155,7 @@ export function createRuntimeInspectors(layout: WarehouseLayout, simulation: Sim
         taskId: robot.assignedTaskId,
         waitingReason: robot.waitingReason ?? robot.blockedReason,
         conflictTarget: robot.conflictTarget,
-        queueLaneId: task?.queueLaneId,
+        queueLaneId: task?.queuePointId ?? task?.queueLaneId,
         stationId,
         activeStationRobotId: stationId ? simulation.stationStates[stationId]?.activeRobotId ?? simulation.stationQueues.find((queue) => queue.stationId === stationId)?.activeRobotId : undefined
       };
@@ -151,6 +176,7 @@ export function createRuntimeInspectors(layout: WarehouseLayout, simulation: Sim
     .slice(-80);
 
   return {
+    queuePoints,
     queueLanes,
     stationAdmission,
     controllerDecisionTrace: simulation.eventLog.filter((event) => event.entityType === "controller" || event.details?.controller).slice(-80),
@@ -284,7 +310,11 @@ export function installDebugGlobals(stores: {
     getRecentActions: () => useDebugStore.getState().events.filter((event) => event.category === "user_action").slice(-100),
     getSimulationSnapshot: () => stores.simulation.getState().state,
     getLayoutSnapshot: () => stores.layout.getState().history.present,
-    getQueueLaneInspector: () => createRuntimeInspectors(stores.layout.getState().history.present, stores.simulation.getState().state).queueLanes,
+    getQueuePointInspector: () => createRuntimeInspectors(stores.layout.getState().history.present, stores.simulation.getState().state).queuePoints,
+    getQueueLaneInspector: () => {
+      const inspectors = createRuntimeInspectors(stores.layout.getState().history.present, stores.simulation.getState().state);
+      return inspectors.queueLanes.length > 0 ? inspectors.queueLanes : inspectors.queuePoints;
+    },
     getStationAdmissionTrace: () => createRuntimeInspectors(stores.layout.getState().history.present, stores.simulation.getState().state).stationAdmission,
     getControllerDecisionTrace: () => createRuntimeInspectors(stores.layout.getState().history.present, stores.simulation.getState().state).controllerDecisionTrace,
     getReservationTimeline: () => createRuntimeInspectors(stores.layout.getState().history.present, stores.simulation.getState().state).reservationTimeline,
@@ -307,6 +337,7 @@ declare global {
       getRecentActions: () => unknown[];
       getSimulationSnapshot: () => unknown;
       getLayoutSnapshot: () => unknown;
+      getQueuePointInspector: () => unknown[];
       getQueueLaneInspector: () => unknown[];
       getStationAdmissionTrace: () => unknown[];
       getControllerDecisionTrace: () => unknown[];

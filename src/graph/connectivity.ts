@@ -1,5 +1,6 @@
 import type { WarehouseLayout } from "../models/layout";
 import { allDirections, type Direction } from "../models/grid";
+import { deriveDirectedLinksFromCells } from "../utils/directionLinks";
 import { cellKey } from "../utils/gridMath";
 import { neighbor } from "../utils/gridMath";
 import { ensureStorageLocations } from "../utils/storageLocations";
@@ -45,7 +46,8 @@ function layoutWithStorageServiceCells(layout: WarehouseLayout): WarehouseLayout
       zoneId: existing?.zoneId
     });
   }
-  return { ...layout, cells: [...cellMap.values()] };
+  const cells = [...cellMap.values()];
+  return { ...layout, cells, directedLinks: deriveDirectedLinksFromCells({ grid: layout.grid, cells }) };
 }
 
 export function validateConnectivity(layout: WarehouseLayout): ConnectivityResult {

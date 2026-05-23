@@ -12,10 +12,10 @@
 - Generated layout candidate comparison drawer with sortable metrics, top-three comparison, preview, and apply workflow.
 - Candidate preview/apply UX now separates temporary preview from final apply; closing an unapplied preview restores the previous active layout.
 - Hybrid generation that starts from the current layout and fills around protected constraints.
-- Visual object placement for racks, stations, queues, chargers, parking spots, rotation-enabled cells, blocked cells, human zones, and docks.
+- Visual object placement for racks, stations, queue pre-points, chargers, parking spots, rotation-enabled cells, blocked cells, human zones, and docks.
 - Object selection, drag/drop movement, deletion, rotation, copy/paste for racks, undo, and redo.
 - Continuous paint/erase behavior for cell drawing tools.
-- Traffic direction editing for selected cells with north/south/east/west controls and one-way graph support.
+- Traffic direction editing synchronizes center-to-center `DirectedNeighborLink` records. One-way and two-way arrows render from the same graph edges that path planning uses.
 - Rack model with faces and bin records, station model, charger model, parking model, and rotation-enabled cell properties.
 - Full selected-rack bin table with editable barcode, location, SKU, quantity, dimensions, regeneration, SKU clearing, location auto-numbering, and rack-bin CSV import/export.
 - Controlled multi-cell rack footprints up to `2x2` cells with multi-cell rendering, validation, movement, rotation, graph approach nodes, and import/export roundtrip support.
@@ -36,7 +36,7 @@
 - 2D simulation data models for robots, tasks, route plans, station queues, reservation snapshots, event logs, and metrics.
 - Robot initialization from parking spots first, chargers second, then perimeter road fallback cells.
 - Random nearest-station, HOT/WARM/COLD weighted, and manual rack-to-station task creation.
-- Shortest-path simulation planning over the existing layout graph with one-way traffic, blocked-cell avoidance, storage `podServiceCell` pickup/drop targets, ordered queue-lane routing into `station.cell`, rotation-enabled-cell detours, and return paths.
+- Shortest-path simulation planning over the existing layout graph with directed neighbor links, blocked-cell avoidance, storage `podServiceCell` pickup/drop targets, queue pre-point visits before `station.cell`, rotation-enabled-cell detours, and return paths.
 - Time-expanded reservation table that prevents same-cell and edge-swap conflicts, reserves loaded rack envelopes, reserves finite resources, and can insert wait steps.
 - Step-based simulation engine with smooth robot pose interpolation, loaded/unloaded speeds, lift/drop/service timing, station FIFO queues, rack carry/drop behavior, task completion, metrics, and event logging.
 - Canvas simulation layers for robots, yaw arrows, carried racks, planned paths, reservation overlays, and station queue occupancy.
@@ -62,7 +62,8 @@
 - Operational task pipeline layered over movement tasks, with `PICK_ORDER`, `REPLENISH_RACK`, `MOVE_RACK_TO_STATION`, return/storage states, timestamps, and route segments.
 - Simulation Mode now creates sample orders from actual rack inventory, selects racks by SKU availability, reserves inventory/racks/storage, updates inventory at service, completes orders after rack return, and records structured operational events.
 - Rack storage/reallocation strategies include return home, nearest available storage, and keep hot racks near stations.
-- Multi-robot dispatch now uses physical queue-lane entry admission instead of a single active-task station lock. Robots reserve the entry/tail cell, then advance through ordered queue cells one cell at a time before entering `station.cell`.
+- Multi-robot dispatch no longer uses a single active-task station lock. Robots can be dispatched toward the same station when queue pre-point capacity, station service exclusivity, robot availability, and traffic ownership allow it.
+- Legacy queue lanes are deprecated for runtime behavior. New and migrated layouts use first-class queue pre-points that can apply to one station or all stations.
 - Simulation Mode renders stored racks from runtime rack/storage state, so relocated racks appear at their current storage location.
 - Simulation UI now includes Orders & Inventory, Controllers, operational task trace, robot/station state summaries, and orders/inventory CSV exports.
 - Simulation Readiness card now explains missing layout/inventory/station/storage/simulation prerequisites and exposes one-click inventory/order fixes.
@@ -124,13 +125,13 @@
 - User-reported stabilization pass confirmed and fixed the oversized default demo, missing workflow-independent view controls, weak mouse zoom/pan, missing order/inventory recovery actions, and globally skipped interactive canvas E2E coverage.
 - User-reported stabilization pass added runtime collision enforcement so the simulator does not accept visually overlapping robot/rack states after movement.
 - Logic/algorithm bug-fix pass removed the station-level dispatch serializer that made only one robot appear to run.
-- Logic/algorithm bug-fix pass added queue lane runtime reservations, runtime rack rendering, nearest-available storage scoring by `podServiceCell`, and rack `currentCell` updates after drop.
+- Logic/algorithm bug-fix pass added station approach reservations, runtime rack rendering, nearest-available storage scoring by `podServiceCell`, and rack `currentCell` updates after drop.
 - Diagnostics follow-up fixed queue-head robots repeatedly attempting to enter an occupied station service cell and made collision rollback snap to the previous safe cell center.
-- RAWSim-O alignment follow-up extracted queue-lane runtime lifecycle helpers, made station `shortest_queue` scoring use live `queueLaneStates` plus active service occupancy instead of stale `StationQueue.waitingRobotIds`, and kept legacy station queues as a derived compatibility view.
+- RAWSim-O alignment follow-up added queue pre-point runtime helpers, made station `shortest_queue` scoring use live queue pre-point state plus active service occupancy instead of stale `StationQueue.waitingRobotIds`, and kept legacy station queues as a migration/debug compatibility view.
 - RAWSim-O alignment follow-up changed nearest-rack scoring to route to `StorageLocation.podServiceCell`, matching pickup execution semantics.
 - RAWSim-O alignment follow-up added graph routing context so generic shortest-path calls block station cells as pass-through shortcuts while assigned station-service routing can still target `station.cell`.
-- RAWSim-O alignment follow-up added Debug / QA inspectors and globals for queue lanes, station admission, waiting reasons, controller decision traces, and reservation snippets.
-- Current custom Small Demo default now matches the user-tested `layout_g3oeuj_0w3t` shape: two external pick stations, directional queue lanes, 25 racks, 2 chargers, 4 parking spots, and compact simulation settings that complete a demo cycle reliably.
+- RAWSim-O alignment follow-up added Debug / QA inspectors and globals for queue pre-points, station admission, waiting reasons, controller decision traces, and reservation snippets.
+- Current custom Small Demo default now matches the user-tested `layout_g3oeuj_0w3t` shape: two external pick stations, queue pre-points, 25 racks, 2 chargers, 4 parking spots, and compact simulation settings that complete a demo cycle reliably.
 - New layouts default to `1.5 m x 1.5 m` grid cells and new racks default to a `1.2 m x 1.2 m` footprint.
 - Manual station placement creates only the station service cell. Queue lanes remain separate directional waiting cells and are not bundled into newly placed station objects.
 - Manual editing now remembers the last edited rack footprint/orientation and the last edited road/aisle direction and rotation settings for subsequently placed racks or drawn road cells.
@@ -164,13 +165,13 @@ Completed in this pass:
 
 - Removed `ROTATION` as an active cell type.
 - Added rotation permissions as `LayoutCell` properties controlled from the Direction/Traffic properties UI.
-- Added first-class `QueueLane` records.
+- Added first-class `QueueLane` records in schema `0.3.0`; schema `0.3.1` migrates them to runtime `QueuePoint` pre-points.
 - Detached queue cells from station records.
-- Updated generated Small/Large demos to create ordered directional queue lanes.
+- Updated generated Small/Large demos to create queue pre-points.
 - Updated station routing so service paths end at `station.cell`.
 - Updated rack/pod routing so pickup and drop paths end at `StorageLocation.podServiceCell`.
 - Added import migration from old rotation zones and old station-owned queue cells.
-- Added validation for queue lanes, pod service cells, and rotation-enabled cells.
+- Added validation for queue pre-points, pod service cells, and rotation-enabled cells.
 - Updated E2E tests to configure rotation through the Direction tool.
 
 Verification:

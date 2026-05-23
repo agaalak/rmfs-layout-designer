@@ -142,7 +142,7 @@ For traffic problems, first inspect:
 - blocked robots
 - invariant violations
 - the robot's waiting reason and conflict target
-- queue-lane occupancy in the Debug / QA Queue / Station Runtime section
+- queue pre-point occupancy in the Debug / QA Queue / Station Runtime section
 - station admission state and which robot is physically ready on `station.cell`
 - reservation snippets for station/queue/resource contention
 
@@ -161,8 +161,8 @@ The trace is often the fastest way to confirm whether a button was missing, cove
 
 When debugging queue/station/pod/rotation issues, inspect:
 
-- `layout.queueLanes` for ordered queue cells and `directionToNext`
-- `station.queueLaneIds` for linked queues
+- `layout.queuePoints` for station pre-points and shared pre-points
+- `station.queuePolicy` for queue pre-point requirements
 - `station.cell` for the actual service cell
 - `storageLocation.podServiceCell` for pickup/drop target
 - `layout.cells.filter(cell => cell.allowRotation)` for rotation-enabled cells
@@ -176,9 +176,9 @@ For multi-robot dispatch issues, inspect:
 - active robot count
 - idle robot count
 - pending task count
-- `queueLaneStates`
+- `queuePointStates`
 - station queue active/waiting robot IDs
-- recent event-log messages containing "queue lane" or "delayed"
+- recent event-log messages containing "queue", "pre-point", "denied", or "delayed"
 
 For rack relocation visual issues, inspect:
 
@@ -187,12 +187,13 @@ For rack relocation visual issues, inspect:
 - `storageLocationStates[storageId].currentlyStoredRackId`
 - whether Simulation Mode is rendering runtime racks instead of design-time `homeCell`
 
-The Simulation panel now surfaces queue lane load and rack runtime locations directly. The live debug APIs also include focused helpers:
+The Simulation panel now surfaces queue pre-point load and rack runtime locations directly. The live debug APIs also include focused helpers:
 
-- `window.__RMFS_DEBUG__.getQueueLaneInspector()`
+- `window.__RMFS_DEBUG__.getQueuePointInspector()`
+- `window.__RMFS_DEBUG__.getQueueLaneInspector()` as a legacy compatibility alias
 - `window.__RMFS_DEBUG__.getStationAdmissionTrace()`
 - `window.__RMFS_DEBUG__.getWhyWaiting()`
 - `window.__RMFS_DEBUG__.getControllerDecisionTrace()`
 - `window.__RMFS_DEBUG__.getReservationTimeline()`
 
-`window.__RMFS_TEST__` exposes the queue-lane inspector, station admission trace, and why-waiting trace in dev/debug mode for Playwright and live triage.
+`window.__RMFS_TEST__` exposes the queue pre-point inspector, station admission trace, and why-waiting trace in dev/debug mode for Playwright and live triage.

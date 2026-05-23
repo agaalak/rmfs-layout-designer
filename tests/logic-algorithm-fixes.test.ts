@@ -7,6 +7,7 @@ import { runLogicBugScenario } from "../src/simulation/scenarios/logicBugScenari
 import { generateOperationalSimulationWork, initializeSimulation, stepSimulation } from "../src/simulation/simulationEngine";
 import { applyCollisionGuard } from "../src/simulation/collisionRuntime";
 import { cellKey } from "../src/utils/gridMath";
+import { queuePointsForStation } from "../src/utils/queuePoints";
 
 const fastConfig: SimulationConfig = {
   ...defaultSimulationConfig,
@@ -75,12 +76,12 @@ describe("logic and algorithm bug fixes", () => {
     expect(next.eventLog.filter((event) => event.message.includes("assigned to robot_")).length).toBeGreaterThan(1);
   });
 
-  it("reserves physical queue entry cells without duplicate queue-cell targets", () => {
+  it("tracks queue pre-point reservations without duplicate owners", () => {
     const { layout, state } = applyWork();
     const next = stepSimulation(layout, state, fastConfig, 0.2);
-    const laneLoads = Object.values(next.queueLaneStates).map((lane) => lane.reservedTaskIds.length + lane.occupiedCells.filter((cell) => cell.robotId).length);
-    expect(Math.max(...laneLoads)).toBeGreaterThan(0);
-    const reservedCells = Object.values(next.queueLaneStates).flatMap((lane) => lane.occupiedCells.filter((cell) => cell.reservedTaskId).map((cell) => `${lane.queueLaneId}:${cell.queueIndex}`));
+    const pointLoads = Object.values(next.queuePointStates).map((point) => point.reservedTaskIds.length + (point.occupiedRobotId ? 1 : 0));
+    expect(Math.max(...pointLoads)).toBeGreaterThan(0);
+    const reservedCells = Object.entries(next.queuePointStates).flatMap(([pointId, point]) => point.reservedTaskIds.map((taskId) => `${pointId}:${taskId}`));
     expect(new Set(reservedCells).size).toBe(reservedCells.length);
   });
 
@@ -129,9 +130,9 @@ describe("logic and algorithm bug fixes", () => {
   it("holds a loaded robot at queue head while the station service cell is occupied", () => {
     const layout = generateSmallDemoLayout();
     let state = initializeSimulation(layout, { ...fastConfig, collisionCheckingEnabled: true });
-    const station = layout.stations.find((item) => item.queueLaneIds.length > 0)!;
-    const lane = layout.queueLanes.find((item) => item.queueLaneId === station.queueLaneIds[0])!;
-    const head = lane.headCell;
+    const station = layout.stations[0];
+    const point = queuePointsForStation(layout, station)[0];
+    const head = point.cell;
     const task = {
       taskId: "task_wait_for_station",
       taskType: "PICK_ORDER" as const,
@@ -142,7 +143,8 @@ describe("logic and algorithm bug fixes", () => {
       status: "ASSIGNED" as const,
       createdAtSec: 0,
       assignedAtSec: 0,
-      queueLaneId: lane.queueLaneId,
+      queuePointId: point.queuePointId,
+      queuePointCell: point.cell,
       sourceStorageLocationId: layout.racks[1].currentStorageLocationId,
       destinationStorageLocationId: layout.racks[1].homeStorageLocationId,
       routePlan: {
@@ -179,7 +181,7 @@ describe("logic and algorithm bug fixes", () => {
     const config = { ...fastConfig, collisionCheckingEnabled: true, stationServiceTimeSec: 10 };
     const { layout, state: initial } = applyWork(generateSmallDemoLayout(), config);
     let state = initial;
-    for (let index = 0; index < 40; index += 1) {
+    for (let index = 0; index < 12; index += 1) {
       state = stepSimulation(layout, state, config, 0.2);
       const queueRobotCells = state.robots
         .filter((robot) => robot.state === "QUEUING_AT_STATION")

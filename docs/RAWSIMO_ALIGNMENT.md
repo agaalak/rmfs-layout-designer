@@ -19,6 +19,7 @@ The current code now separates, or documents the separation of:
 - storage locations
 - racks/pods and inventory
 - service stations
+- queue pre-points
 - chargers and parking locations
 - robots
 - orders/tasks
@@ -33,7 +34,7 @@ An RMFS layout instance contains:
 - grid
 - cells
 - derived routing waypoints
-- graph edges
+- directed graph edges
 - storage locations
 - racks/pods
 - stations
@@ -62,11 +63,13 @@ Current code:
 
 ### Cell
 
-A cell is physical grid geometry. It can be empty, road, blocked, human zone, dock, station area, storage area, queue, charger, or parking.
+A cell is physical grid geometry. It can be empty, road, blocked, human zone, dock, station area, storage area, charger, or parking. Legacy queue cells are migrated into road cells with queue pre-point markers.
 
 Cells are not racks, robots, stations, or tasks. A cell may visually host or mark an area used by one of those objects, but those resources are separate records.
 
 Rotation is not a cell type. Rotation is a property on a traversable cell (`allowRotation`, supported orientations, dwell time, and capacity) managed through traffic/direction semantics.
+
+Direction is not a vague cell decoration. Runtime movement uses center-to-center `DirectedNeighborLink` records between adjacent cells. Existing cell-local direction settings are treated as an editing convenience and migration source only.
 
 Current code:
 
@@ -149,11 +152,11 @@ Current station data supports:
 - service side
 - accepted rack faces
 - required rack orientation
-- linked queue lane IDs
+- queue policy and linked queue pre-points
 - service time
 - service capacity
 
-Queue cells are independent ordered `QueueLane` resources. They are not embedded in `Station`, and they are not station service cells. Current simulator runtime tracks active station robot/rack, queue-lane occupancy, service timer, and completed service count. Service updates inventory for pick/replenish paths only after the robot enters `station.cell`.
+Queue pre-points are independent resources. They are not embedded in `Station`, and they are not station service cells. Current simulator runtime tracks active station robot/rack, queue pre-point occupancy, service timer, and completed service count. Service updates inventory for pick/replenish paths only after the robot enters `station.cell`.
 
 ### Charger And ParkingLocation
 
@@ -221,12 +224,13 @@ Current implementation:
 - `src/simulation/controllers/robotAssignmentController.ts`
 - `src/simulation/controllers/rackStorageController.ts`
 
-2026-05-16 alignment update:
+2026-05-23 alignment update:
 
-- `stationAssignmentController.ts` no longer relies on stale `StationQueue.waitingRobotIds` when the layout has queue lanes. The `shortest_queue` strategy scores live `queueLaneStates`, queue-lane reservations, and active station service occupancy.
+- `stationAssignmentController.ts` no longer relies on stale `StationQueue.waitingRobotIds` when queue pre-points exist. The `shortest_queue` strategy scores live `queuePointStates`, queue pre-point reservations, and active station service occupancy.
 - `rackSelectionController.ts` scores nearest compatible racks by route cost to `StorageLocation.podServiceCell`, matching the runtime pickup rule.
 - `graphBuilder.ts` supports station routing context so generic routing can block station cells as pass-through shortcuts while assigned station-service routes can still target `station.cell`.
-- `src/simulation/lifecycle/queueLaneLifecycle.ts` now owns queue-lane reservations, occupancy syncing, head-of-line detection, station-entry gating, and compatibility derivation of `StationQueue` views.
+- `src/simulation/lifecycle/queuePointLifecycle.ts` now owns queue pre-point reservations, occupancy syncing, station-entry gating, and compatibility derivation for debug/export views.
+- `src/models/direction.ts` and `layout.directedLinks` make traffic direction an edge model rather than a cell decoration.
 - `src/simulation/controllers/chargingController.ts`
 - `src/simulation/controllers/controllerRegistry.ts`
 

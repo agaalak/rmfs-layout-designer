@@ -2,7 +2,8 @@ import type { GridCell } from "../models/grid";
 import type { WarehouseLayout } from "../models/layout";
 import { cellKey, inBounds } from "../utils/gridMath";
 import { rackFootprintCells, rackOccupiedCells } from "../utils/rackFootprint";
-import { directionBetweenCells, stationQueueCells } from "../utils/queueLanes";
+import { directionBetweenCells } from "../utils/queueLanes";
+import { queuePointsForStation } from "../utils/queuePoints";
 
 export interface ValidationIssue {
   id: string;
@@ -281,27 +282,39 @@ export function validateObjects(layout: WarehouseLayout): ValidationIssue[] {
 
   for (const station of layout.stations) {
     claim(station.cell, station.id, `Station ${station.stationId}`);
-    const queueCells = stationQueueCells(layout, station);
-    if (queueCells.length === 0) {
+    const queuePoints = queuePointsForStation(layout, station);
+    if ((station.queuePolicy?.requireQueuePointVisit ?? false) && queuePoints.length === 0) {
       issues.push({
         id: `station_queue_${station.id}`,
         severity: "warning",
-        message: `Station ${station.stationId} has no linked queue lane.`,
+        message: `Station ${station.stationId} requires a queue pre-point but none is linked.`,
         cell: station.cell,
         objectId: station.id
       });
     }
-    for (const cell of queueCells) {
-      if (cellKey(cell) === cellKey(station.cell)) {
+    for (const point of queuePoints) {
+      if (cellKey(point.cell) === cellKey(station.cell)) {
         issues.push({
-          id: `station_queue_overlaps_service_${station.id}_${cell.row}_${cell.col}`,
+          id: `station_queue_point_overlaps_service_${station.id}_${point.cell.row}_${point.cell.col}`,
           severity: "error",
-          message: `Queue cells must be detached from station ${station.stationId}'s service cell.`,
-          cell,
+          message: `Queue pre-point ${point.queuePointId} must be detached from station ${station.stationId}'s service cell.`,
+          cell: point.cell,
           objectId: station.id
         });
       }
-      claim(cell, `${station.id}:queue`, `Queue lane for ${station.stationId}`);
+    }
+  }
+
+  for (const point of layout.queuePoints ?? []) {
+    if (!point.appliesToAllStations && point.stationIds.length === 0) {
+      issues.push({ id: `queue_point_station_${point.queuePointId}`, severity: "warning", message: `Queue pre-point ${point.queuePointId} is not assigned to a station.`, cell: point.cell, objectId: point.queuePointId });
+    }
+    const cell = layout.cells.find((item) => cellKey(item) === cellKey(point.cell));
+    if (!cell || !["ROAD", "CHARGING", "PARKING"].includes(cell.cellType)) {
+      issues.push({ id: `queue_point_cell_${point.queuePointId}`, severity: "error", message: `Queue pre-point ${point.queuePointId} must be on a traversable non-station cell.`, cell: point.cell, objectId: point.queuePointId });
+    }
+    if ((point.capacity ?? 1) < 1) {
+      issues.push({ id: `queue_point_capacity_${point.queuePointId}`, severity: "error", message: `Queue pre-point ${point.queuePointId} capacity must be at least 1.`, cell: point.cell, objectId: point.queuePointId });
     }
   }
 

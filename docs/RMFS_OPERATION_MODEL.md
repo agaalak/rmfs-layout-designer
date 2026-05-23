@@ -21,7 +21,7 @@ The implemented pick flow is:
 7. Move the robot empty to the rack storage `podServiceCell`.
 8. Lift the rack and free the source storage location.
 9. Move loaded, optionally through a pre-station rotation-enabled cell.
-10. Reserve and enter an ordered queue lane if needed.
+10. Reserve and visit the selected queue pre-point if station policy requires one.
 11. Enter the physical `station.cell` and run station service.
 12. Decrement picked inventory and fulfill order lines.
 13. Select return storage.
@@ -87,17 +87,17 @@ Runtime station state tracks:
 
 - active robot
 - active rack
-- ordered queue-lane occupancy and queue lane runtime reservations
+- queue pre-point occupancy and runtime reservations
 - service end time
 - completed service count
 
 PICK/COMBI service decrements inventory and fulfills order lines. REPLENISH paths can increment inventory. PACK/QC/BUFFER remain dwell/service-only in this pass.
 
-Dispatch now reserves the physical queue-lane entry cell. A station can have one active service robot while additional robots are assigned over time as queue entry cells become available. Queue capacity is still represented by ordered lane cells, but robots do not teleport or pass through occupied queue cells to claim deeper slots.
+Dispatch now reserves the selected queue pre-point before the station visit. A station can have one active service robot while additional robots are assigned over time as queue pre-points or upstream waits become available. Robots do not teleport through occupied cells to claim deeper waiting positions.
 
-At runtime, a robot enters the tail/entry queue cell, advances one ordered cell at a time, waits at the head queue cell until the station service cell is free, and only then moves into `station.cell`. This prevents following robots from stacking on the head cell or repeatedly attempting to interpolate into an occupied station cell.
+At runtime, a robot visits the selected queue pre-point, waits there or upstream while the station service cell is occupied, and only then moves into `station.cell`. This prevents following robots from stacking on the station cell or repeatedly attempting to interpolate into an occupied station cell.
 
-The runtime source of truth for waiting robots is `SimulationState.queueLaneStates`. `StationQueue.waitingRobotIds` is now treated as a derived compatibility view for service admission/export surfaces, not as a controller decision source. Station assignment `shortest_queue` uses live queue-lane occupied cells, lane reservations, and active station service occupancy.
+The runtime source of truth for waiting robots is `SimulationState.queuePointStates`. `StationQueue.waitingRobotIds` is now treated as a derived compatibility view for service admission/export surfaces, not as a controller decision source. Station assignment `shortest_queue` uses live queue pre-point occupancy, reservations, and active station service occupancy.
 
 Generic routing and analytics-style shortest paths should not use station cells as incidental pass-through shortcuts. Task-specific station routing can still target `station.cell`, and service starts only once the robot physically reaches that cell.
 
@@ -193,25 +193,25 @@ The new focused regression tests are in `tests/logic-algorithm-fixes.test.ts`.
 
 # 2026-05-16 Queue-Lane Runtime Alignment
 
-The simulator now has a dedicated queue-lane lifecycle module:
+The simulator now has a dedicated queue pre-point lifecycle module:
 
-- `createQueueLaneStates`
-- `reserveQueueLaneSlot`
-- `syncQueueLaneStates`
-- `chooseQueueLaneForStation`
+- `createQueuePointStates`
+- `reserveQueuePoint`
+- `syncQueuePointStates`
+- `chooseQueuePointForStation`
 - `deriveStationQueuesFromRuntime`
 - `holdRobotBeforeBlockedStationEntry`
 
-This keeps queue occupancy, queue scoring, head-of-line detection, station-entry gating, and station service readiness aligned around one runtime state. Debug exports and the Debug / QA panel now include queue-lane inspectors, station admission traces, waiting reasons, controller decision traces, and reservation snippets.
+This keeps queue occupancy, queue scoring, station-entry gating, and station service readiness aligned around one runtime state. Debug exports and the Debug / QA panel now include queue pre-point inspectors, station admission traces, waiting reasons, controller decision traces, and reservation snippets.
 # 2026-05-14 Queue/Station/Pod Correction
 
 Operational flow now uses these physical checkpoints:
 
 1. Empty robot travels to the rack storage location `podServiceCell`.
 2. Robot lifts only while physically on that pod service cell.
-3. Loaded robot travels through the selected queue lane and into `station.cell`.
+3. Loaded robot travels through the selected queue pre-point and into `station.cell`.
 4. Station service starts only from `station.cell`.
 5. Rotation occurs only on cells where `allowRotation=true`.
 6. Robot returns to the destination storage location `podServiceCell` before dropping.
 
-Queue cells are directional FIFO waiting cells. They are linked to stations by `QueueLane`, but they are not station cells.
+Queue points are physical pre-station resources. They are linked to one station or all stations, but they are not station cells. Legacy queue lanes are migrated to queue pre-points for runtime behavior.

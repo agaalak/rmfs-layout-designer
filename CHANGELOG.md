@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-05-23 - Directed Graph And Queue Pre-Point Alignment
+
+- Added persisted `DirectedNeighborLink` records so one-way and two-way traffic are modeled as center-to-center cell edges.
+- Updated graph construction and direction-arrow rendering to use directed links, with legacy cell-local directions kept as migration/editing input.
+- Added first-class `QueuePoint` pre-station resources and migrated legacy queue lanes/cells into queue pre-points during normalization.
+- Updated station assignment and station routing to score queue pre-point load/reservations plus active service occupancy.
+- Kept `podServiceCell` pickup/drop routing, runtime rack rendering after storage reallocation, and station-service-only-at-`station.cell` semantics.
+- Extended Debug / QA inspectors and test hooks with queue pre-point visibility while retaining queue-lane aliases for older diagnostics.
+- Added docs for the directed graph, queue pre-point model, and pod runtime footprint/position semantics.
+
+Deferred:
+
+- Full WHCA*/CBS/MAPF planning remains out of scope.
+- The Direction UI still uses the existing cell-control panel while synchronizing directed links under the hood.
+- Legacy queue-lane types remain as deprecated import/test compatibility until a later cleanup removes the old API surface.
+
 ## 2026-05-16 - RAWSim-O Queue/Controller Alignment
 
 - Extracted queue-lane runtime behavior into `src/simulation/lifecycle/queueLaneLifecycle.ts`.

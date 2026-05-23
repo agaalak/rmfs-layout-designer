@@ -20,7 +20,7 @@ import { validateSimulationReadiness } from "../validation/validateSimulationRea
 import { cellKey } from "../utils/gridMath";
 import { rackOccupiedCells } from "../utils/rackFootprint";
 import { ensureStorageLocations } from "../utils/storageLocations";
-import { stationQueueCells } from "../utils/queueLanes";
+import { chooseQueuePointForStation, stationQueuePointCells } from "../utils/queuePoints";
 import { findNearestRotationCellPath, findPathToRackServiceCell, findPathToStationQueue, findPathToStorageServiceCell, nearestCompatibleStation, storageLocationForRackTask } from "./pathPlanner";
 import { createReservationTable, reserveResource, type ReservationConflict } from "./reservationTable";
 import { inventoryFromLayout, pickInventory, replenishInventory, reserveInventory, applyPickToOrder } from "./inventory";
@@ -46,6 +46,7 @@ import {
   stationHasDispatchCapacity,
   syncQueueLaneStates
 } from "./lifecycle/queueLaneLifecycle";
+import { createQueuePointStates, releaseQueuePoint, reserveQueuePoint, stationHasQueuePointDispatchCapacity, syncQueuePointStates } from "./lifecycle/queuePointLifecycle";
 import { canDropRackAtCurrentCell, canLiftRackAtCurrentCell } from "./lifecycle/rackLifecycle";
 import { movementComplete } from "./lifecycle/robotTaskLifecycle";
 
@@ -191,6 +192,7 @@ export function initializeSimulation(layout: WarehouseLayout, config: Simulation
     failedTasks: [],
     reservationTable: createReservationTable(config.reservationTimeStepSec),
     stationQueues: normalized.stations.map((station): StationQueue => ({ stationId: station.id, waitingRobotIds: [] })),
+    queuePointStates: createQueuePointStates(normalized),
     queueLaneStates: createQueueLaneStates(normalized),
     eventLog,
     trafficDiagnostics: structuredClone(emptyTrafficDiagnostics),
@@ -219,6 +221,7 @@ export function resetSimulation(config: SimulationConfig = defaultSimulationConf
     failedTasks: [],
     reservationTable: createReservationTable(config.reservationTimeStepSec),
     stationQueues: [],
+    queuePointStates: {},
     queueLaneStates: {},
     eventLog: [],
     trafficDiagnostics: structuredClone(emptyTrafficDiagnostics),
@@ -297,6 +300,7 @@ export function generateOperationalSimulationWork(layout: WarehouseLayout, state
   const rackStates = { ...state.rackStates };
   const storageLocationStates = { ...state.storageLocationStates };
   let planningQueueLaneStates = structuredClone(state.queueLaneStates);
+  let planningQueuePointStates = structuredClone(state.queuePointStates);
 
   for (const [orderIndex, order] of generatedOrders.entries()) {
     const line = order.orderLines[0];
@@ -316,6 +320,7 @@ export function generateOperationalSimulationWork(layout: WarehouseLayout, state
     }
     const station = selectStationForRack(normalized, selectedRack.rack, config.stationAssignmentStrategy, {
       queueLaneStates: planningQueueLaneStates,
+      queuePointStates: planningQueuePointStates,
       stationStates: state.stationStates,
       stationQueues: state.stationQueues
     });
@@ -340,6 +345,17 @@ export function generateOperationalSimulationWork(layout: WarehouseLayout, state
     task.orderLineIds = [line.lineId];
     task.operationalTaskId = `op_${task.taskId}`;
     task.destinationStorageLocationId = destination?.storageLocationId ?? selectedRack.rack.homeStorageLocationId;
+    const plannedQueuePoint = chooseQueuePointForStation(normalized, { ...state, queuePointStates: planningQueuePointStates, tasks: [...state.tasks, ...tasks, task] }, station);
+    task.queuePointId = plannedQueuePoint?.queuePointId;
+    task.queuePointCell = plannedQueuePoint?.cell;
+    if (plannedQueuePoint) {
+      planningQueuePointStates = reserveQueuePoint(
+        { ...state, queuePointStates: planningQueuePointStates, tasks: [...state.tasks, ...tasks, task] },
+        plannedQueuePoint.queuePointId,
+        `planned_${task.taskId}`,
+        task.taskId
+      ).queuePointStates;
+    }
     task.selectedBins = [{ lineId: line.lineId, binId: selectedRack.bin.binId, rackId: selectedRack.rack.id, sku: line.sku, quantity: line.quantity }];
     task.serviceKind = station.stationType === "REPLENISH" ? "REPLENISH" : "PICK";
     const planningLane = chooseQueueLaneForStation(normalized, { ...state, queueLaneStates: planningQueueLaneStates, tasks: [...state.tasks, ...tasks] }, station.id);
@@ -462,9 +478,9 @@ function planTaskRoute(layout: WarehouseLayout, robot: Robot, task: SimulationTa
   const preRotation = needsRotation ? findNearestRotationCellPath(layout, pickupCell, station.requiredRackOrientationDeg) : [];
   if (needsRotation && preRotation.length === 0) return undefined;
   const stationStart = preRotation.at(-1) ?? pickupCell;
-  const loadedPathToStation = findPathToStationQueue(layout, stationStart, station, task.queueLaneId, task.queueTargetCell);
+  const loadedPathToStation = findPathToStationQueue(layout, stationStart, station, task.queuePointId ?? task.queueLaneId, task.queuePointCell ?? task.queueTargetCell);
   if (loadedPathToStation.length === 0) return undefined;
-  const stationArrival = task.queueTargetCell ? station.cell : loadedPathToStation.at(-1)!;
+  const stationArrival = loadedPathToStation.at(-1)!;
   const postRotation = needsRotation ? findNearestRotationCellPath(layout, stationArrival, rack.currentOrientationDeg) : [];
   if (needsRotation && postRotation.length === 0) return undefined;
   const returnStart = postRotation.at(-1) ?? stationArrival;
@@ -512,7 +528,7 @@ function isTemporaryDispatchConflict(robot: Robot, conflict?: ReservationConflic
 }
 
 function assignTasks(layout: WarehouseLayout, state: SimulationState, config: SimulationConfig): SimulationState {
-  let next = syncQueueLaneStates(layout, structuredClone(state) as SimulationState);
+  let next = syncQueuePointStates(layout, syncQueueLaneStates(layout, structuredClone(state) as SimulationState));
   const pending = [...next.tasks].filter((task) => task.status === "PENDING").sort((a, b) => b.priority - a.priority);
   const unavailableRobotIds = new Set<string>();
   for (const task of pending) {
@@ -521,8 +537,12 @@ function assignTasks(layout: WarehouseLayout, state: SimulationState, config: Si
     if (!rack || !station) continue;
     const rackState = next.rackStates[task.rackId];
     if (rackState && !["STORED", "RESERVED"].includes(rackState.operationalStatus)) continue;
+    const selectedQueuePoint = chooseQueuePointForStation(layout, next, station);
     const selectedQueueLane = chooseQueueLaneForStation(layout, next, station.id);
-    if (!selectedQueueLane && !stationHasDispatchCapacity(layout, next, station.id)) {
+    const stationQueuePoints = layout.queuePoints.filter((point) => point.appliesToAllStations || point.stationIds.includes(station.id));
+    const stationCanAcceptDispatch =
+      stationQueuePoints.length > 0 ? Boolean(selectedQueuePoint) : Boolean(selectedQueueLane) || stationHasDispatchCapacity(layout, next, station.id);
+    if (!stationCanAcceptDispatch) {
       next.eventLog = log(next.eventLog, {
         timeSec: next.simTimeSec,
         severity: "warning",
@@ -536,7 +556,10 @@ function assignTasks(layout: WarehouseLayout, state: SimulationState, config: Si
     const pickupTarget = storageLocationForRackTask(layout, rack, task.sourceStorageLocationId)?.podServiceCell ?? rack.homeCell;
     const robot = selectRobotForCell(layout, next.robots, pickupTarget, config.robotAssignmentStrategy, unavailableRobotIds);
     if (!robot) break;
-    let taskForPlanning = { ...task, queueLaneId: task.queueLaneId ?? selectedQueueLane?.queueLaneId };
+    let taskForPlanning = { ...task, queuePointId: task.queuePointId ?? selectedQueuePoint?.queuePointId, queuePointCell: task.queuePointCell ?? selectedQueuePoint?.cell, queueLaneId: task.queueLaneId ?? selectedQueueLane?.queueLaneId };
+    if (taskForPlanning.queuePointId) {
+      next = reserveQueuePoint(next, taskForPlanning.queuePointId, robot.robotId, task.taskId);
+    }
     if (taskForPlanning.queueLaneId) {
       const slotReservation = reserveQueueLaneSlotWithCell(next, taskForPlanning.queueLaneId, robot.robotId, task.taskId);
       if (!slotReservation.cell) {
@@ -561,6 +584,7 @@ function assignTasks(layout: WarehouseLayout, state: SimulationState, config: Si
     const routePlan = planTaskRoute(layout, robot, taskForPlanning);
     if (!routePlan) {
       next = releaseQueueLaneSlot(next, taskForPlanning.queueLaneId, robot.robotId, task.taskId);
+      next = releaseQueuePoint(next, taskForPlanning.queuePointId, robot.robotId, task.taskId);
       next.tasks = next.tasks.map((item) => (item.taskId === task.taskId ? { ...item, status: "FAILED", failureReason: "No valid route found." } : item));
       next.failedTasks.push({ ...task, status: "FAILED", failureReason: "No valid route found." });
       next.eventLog = log(next.eventLog, { timeSec: next.simTimeSec, severity: "error", taskId: task.taskId, message: `Task ${task.taskId} failed: no route.` });
@@ -602,10 +626,12 @@ function assignTasks(layout: WarehouseLayout, state: SimulationState, config: Si
       unavailableRobotIds.add(robot.robotId);
       if (reservation.blocked && temporaryDispatchConflict) {
         next = releaseQueueLaneSlot(next, taskForPlanning.queueLaneId, robot.robotId, task.taskId);
+        next = releaseQueuePoint(next, taskForPlanning.queuePointId, robot.robotId, task.taskId);
         continue;
       }
       if (reservation.blocked) {
         next = releaseQueueLaneSlot(next, taskForPlanning.queueLaneId, robot.robotId, task.taskId);
+        next = releaseQueuePoint(next, taskForPlanning.queuePointId, robot.robotId, task.taskId);
         next.trafficDiagnostics.failedDueToTrafficCount += 1;
         next.tasks = next.tasks.map((item) => (item.taskId === task.taskId ? { ...item, status: "FAILED", failureReason: message } : item));
         next.failedTasks.push({ ...task, status: "FAILED", failureReason: message });
@@ -648,6 +674,17 @@ function assignTasks(layout: WarehouseLayout, state: SimulationState, config: Si
         message: `${robot.robotId} reserved queue lane ${taskForPlanning.queueLaneId} index ${taskForPlanning.queueTargetIndex ?? "?"} for station ${station.stationId}.`
       });
     }
+    if (taskForPlanning.queuePointId) {
+      next.eventLog = log(next.eventLog, {
+        timeSec: next.simTimeSec,
+        severity: "info",
+        entityType: "station",
+        entityId: station.id,
+        robotId: robot.robotId,
+        taskId: task.taskId,
+        message: `${robot.robotId} reserved queue pre-point ${taskForPlanning.queuePointId} before station ${station.stationId}.`
+      });
+    }
     next.robots = next.robots.map((item) =>
       item.robotId === robot.robotId
         ? {
@@ -675,6 +712,8 @@ function assignTasks(layout: WarehouseLayout, state: SimulationState, config: Si
             robotId: robot.robotId,
             assignedAtSec: next.simTimeSec,
             routePlan,
+            queuePointId: taskForPlanning.queuePointId,
+            queuePointCell: taskForPlanning.queuePointCell,
             queueLaneId: taskForPlanning.queueLaneId,
             queueTargetCell: taskForPlanning.queueTargetCell,
             queueTargetIndex: taskForPlanning.queueTargetIndex
@@ -791,6 +830,8 @@ function updateStationQueues(layout: WarehouseLayout, state: SimulationState, co
           : robot
       );
       if (task) {
+        next = releaseQueuePoint(next, task.queuePointId, active.robotId, task.taskId);
+        next = releaseQueueLaneSlot(next, task.queueLaneId, active.robotId, task.taskId);
         next.rackStates[task.rackId] = {
           ...next.rackStates[task.rackId],
           operationalStatus: "RETURNING",
@@ -1191,7 +1232,7 @@ export function calculateSimulationMetrics(
       layout.stations.length > 0
         ? stateLike.stationQueues.reduce((sum, queue) => {
             const station = layout.stations.find((item) => item.id === queue.stationId);
-            const capacity = station ? Math.max(1, stationQueueCells(layout, station).length) : 1;
+            const capacity = station ? Math.max(1, stationQueuePointCells(layout, station).length || station.queuePolicy?.stationCapacity || 1) : 1;
             return sum + queue.waitingRobotIds.length / capacity;
           }, 0) / layout.stations.length
         : 0,
@@ -1208,6 +1249,7 @@ export function stepSimulation(layout: WarehouseLayout, state: SimulationState, 
     simTimeSec: state.simTimeSec + deltaTimeSec
   };
   next = assignTasks(normalized, next, config);
+  next = syncQueuePointStates(normalized, next);
   const queueAdvance = advanceQueueLaneRobots(normalized, next, robotColors.MOVING_LOADED);
   next = queueAdvance.state;
   for (const event of queueAdvance.events) next.eventLog = log(next.eventLog, event);
@@ -1221,9 +1263,11 @@ export function stepSimulation(layout: WarehouseLayout, state: SimulationState, 
   next = moveGate.state;
   for (const event of moveGate.events) next.eventLog = log(next.eventLog, event);
   next = applyCollisionGuard(normalized, beforeMove, next, config);
+  next = syncQueuePointStates(normalized, next);
   next = syncQueueLaneStates(normalized, next);
   next = handleRobotTransitions(normalized, next, config);
   next = updateStationQueues(normalized, next, config);
+  next = syncQueuePointStates(normalized, next);
   next = syncQueueLaneStates(normalized, next);
   if (config.deadlockDetectionEnabled) {
     const detections = detectDeadlocks(next, config);

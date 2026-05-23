@@ -111,7 +111,7 @@ npm run test:e2e:smoke
 Use this checklist when testing corrected RMFS semantics:
 
 1. Load Small Demo and confirm validation errors are zero.
-2. In Design, select a station and confirm queue lanes are listed separately.
+2. In Design, select a station and confirm queue pre-points are listed separately from the station service cell.
 3. Use the Direction tool on a road cell and enable rack rotation.
 4. Start Experimental Simulation and run one order.
 5. In the event log, confirm pickup happens after reaching the pod service cell.
@@ -127,7 +127,7 @@ When testing reports like "only one robot runs":
 3. Initialize.
 4. Generate 6 tasks.
 5. Step once.
-6. Confirm more than one robot is active and queue lane reservations are non-zero.
+6. Confirm more than one robot is active when enough tasks/resources exist and queue pre-point reservations are visible.
 7. If not, export diagnostics and inspect `queueLaneStates`, `pendingTasks`, and recent "delayed" events.
 
 When testing reports like "the pod goes back to the old spot":

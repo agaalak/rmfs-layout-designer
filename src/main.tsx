@@ -16,6 +16,7 @@ declare global {
       layout: typeof useLayoutStore;
       ui: typeof useUiStore;
       simulation: typeof useSimulationStore;
+      getQueuePointInspector?: () => unknown[];
       getQueueLaneInspector?: () => unknown[];
       getStationAdmissionTrace?: () => unknown[];
       getWhyWaiting?: () => unknown[];
@@ -33,7 +34,11 @@ if (debugEnabled) {
     layout: useLayoutStore,
     ui: useUiStore,
     simulation: useSimulationStore,
-    getQueueLaneInspector: () => createRuntimeInspectors(useLayoutStore.getState().history.present, useSimulationStore.getState().state).queueLanes,
+    getQueuePointInspector: () => createRuntimeInspectors(useLayoutStore.getState().history.present, useSimulationStore.getState().state).queuePoints,
+    getQueueLaneInspector: () => {
+      const inspectors = createRuntimeInspectors(useLayoutStore.getState().history.present, useSimulationStore.getState().state);
+      return inspectors.queueLanes.length > 0 ? inspectors.queueLanes : inspectors.queuePoints;
+    },
     getStationAdmissionTrace: () => createRuntimeInspectors(useLayoutStore.getState().history.present, useSimulationStore.getState().state).stationAdmission,
     getWhyWaiting: () => createRuntimeInspectors(useLayoutStore.getState().history.present, useSimulationStore.getState().state).whyWaiting,
     getTrafficOccupancy: () => createRuntimeInspectors(useLayoutStore.getState().history.present, useSimulationStore.getState().state).trafficOccupancy,

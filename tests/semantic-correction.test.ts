@@ -4,7 +4,7 @@ import { importLayoutJson, parseLayoutJson } from "../src/importExport/importLay
 import { traversableCellTypes, type LayoutCell } from "../src/models/grid";
 import { findNearestRotationCellPath, findPathToNearestRackApproach, findPathToStationQueue, nearestCompatibleStation } from "../src/simulation/pathPlanner";
 import { cellKey } from "../src/utils/gridMath";
-import { stationQueueCells } from "../src/utils/queueLanes";
+import { queuePointsForStation } from "../src/utils/queuePoints";
 import { validateLayout } from "../src/validation/validateLayout";
 
 describe("queue/station/pod/rotation semantic corrections", () => {
@@ -16,10 +16,10 @@ describe("queue/station/pod/rotation semantic corrections", () => {
     expect(layout.rotationZones).toHaveLength(0);
   });
 
-  it("migrates legacy station queueCells and rotationZones into queue lanes and rotation-enabled cells", () => {
+  it("migrates legacy station queueCells and rotationZones into queue pre-points and rotation-enabled cells", () => {
     const legacy = generateSmallDemoLayout();
     const station = legacy.stations[0];
-    const queueCells = stationQueueCells(legacy, station);
+    const queueCells = queuePointsForStation(legacy, station).map((point) => point.cell);
     const rotationCell = legacy.cells.find((cell) => cell.allowRotation)!;
     const imported = importLayoutJson(
       JSON.stringify({
@@ -53,26 +53,26 @@ describe("queue/station/pod/rotation semantic corrections", () => {
       })
     );
 
-    expect(imported.layoutSchemaVersion).toBe("0.3.0");
-    expect(imported.queueLanes.length).toBeGreaterThan(0);
-    expect(imported.stations[0].queueLaneIds.length).toBeGreaterThan(0);
+    expect(imported.layoutSchemaVersion).toBe("0.3.1");
+    expect(imported.queuePoints.length).toBeGreaterThan(0);
+    expect(imported.queueLanes.length).toBe(0);
+    expect(imported.stations[0].queueLaneIds.length).toBe(0);
     expect(imported.cells.some((cell) => (cell.cellType as string) === "ROTATION")).toBe(false);
     expect(imported.cells.some((cell) => cell.allowRotation)).toBe(true);
   });
 
-  it("routes station visits through the queue lane and ends at the station service cell", () => {
+  it("routes station visits through the queue pre-point and ends at the station service cell", () => {
     const layout = generateSmallDemoLayout();
     const rack = layout.racks[0];
     const station = nearestCompatibleStation(layout, rack)!;
-    const queueCells = stationQueueCells(layout, station);
+    const queuePoint = queuePointsForStation(layout, station)[0];
     const storage = layout.storageLocations.find((location) => location.storageLocationId === rack.homeStorageLocationId)!;
     const path = findPathToStationQueue(layout, storage.podServiceCell, station);
     const pathKeys = path.map(cellKey);
 
     expect(path.at(-1)).toEqual(station.cell);
-    expect(pathKeys).toContain(cellKey(queueCells[0]));
-    expect(pathKeys).toContain(cellKey(queueCells.at(-1)!));
-    expect(queueCells.some((cell) => cellKey(cell) === cellKey(station.cell))).toBe(false);
+    expect(pathKeys).toContain(cellKey(queuePoint.cell));
+    expect(cellKey(queuePoint.cell)).not.toBe(cellKey(station.cell));
   });
 
   it("targets the storage podServiceCell for pickup/drop and rotation-enabled cells for rotation", () => {

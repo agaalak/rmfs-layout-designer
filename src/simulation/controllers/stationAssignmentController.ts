@@ -1,7 +1,8 @@
 import type { WarehouseLayout } from "../../models/layout";
 import type { Rack } from "../../models/rack";
 import type { Station } from "../../models/station";
-import type { QueueLaneRuntimeState, StationAssignmentStrategy, StationQueue, StationRuntimeState } from "../../models/simulation";
+import type { QueueLaneRuntimeState, QueuePointRuntimeState, StationAssignmentStrategy, StationQueue, StationRuntimeState } from "../../models/simulation";
+import { queuePointsForStation, queuePointRuntimeLoad } from "../../utils/queuePoints";
 import { stationQueueRuntimeScore } from "../lifecycle/queueLaneLifecycle";
 import { findPathToStationQueue, nearestCompatibleStation, storageLocationForRackTask } from "../pathPlanner";
 
@@ -15,6 +16,7 @@ export function selectStationForRack(
   strategy: StationAssignmentStrategy,
   runtime: StationQueue[] | {
     queueLaneStates?: Record<string, QueueLaneRuntimeState>;
+    queuePointStates?: Record<string, QueuePointRuntimeState>;
     stationStates?: Record<string, StationRuntimeState>;
     stationQueues?: StationQueue[];
   } = []
@@ -25,12 +27,19 @@ export function selectStationForRack(
   const stations = reachableStations.length > 0 ? reachableStations : compatibleStations;
   const context = Array.isArray(runtime)
     ? { queueLaneStates: {}, stationStates: {}, stationQueues: runtime }
-    : { queueLaneStates: runtime.queueLaneStates ?? {}, stationStates: runtime.stationStates ?? {}, stationQueues: runtime.stationQueues ?? [] };
+    : { queueLaneStates: runtime.queueLaneStates ?? {}, queuePointStates: runtime.queuePointStates ?? {}, stationStates: runtime.stationStates ?? {}, stationQueues: runtime.stationQueues ?? [] };
   if (strategy === "shortest_queue") {
     return [...stations].sort((a, b) => {
-      const scoreA = stationQueueRuntimeScore(layout, context, a.id);
-      const scoreB = stationQueueRuntimeScore(layout, context, b.id);
-      return scoreA.score - scoreB.score || scoreA.queuedOrReserved - scoreB.queuedOrReserved || a.id.localeCompare(b.id);
+      const pointScore = (station: Station) => {
+        const points = queuePointsForStation(layout, station);
+        if (points.length === 0) return stationQueueRuntimeScore(layout, context, station.id).score;
+        const totalLoad = points.reduce((sum, point) => sum + queuePointRuntimeLoad({ queuePointStates: context.queuePointStates ?? {}, robots: [], tasks: [] }, point), 0);
+        const capacity = points.reduce((sum, point) => sum + Math.max(1, point.capacity), 0);
+        const stationStates = context.stationStates as Record<string, StationRuntimeState>;
+        const active = stationStates[station.id]?.activeRobotId ? 1 : 0;
+        return totalLoad / Math.max(1, capacity) + active;
+      };
+      return pointScore(a) - pointScore(b) || a.id.localeCompare(b.id);
     })[0];
   }
   if (strategy === "station_type_match") {

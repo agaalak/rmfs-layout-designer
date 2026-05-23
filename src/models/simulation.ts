@@ -92,6 +92,15 @@ export interface QueueLaneRuntimeState {
   activeHeadRobotId?: string;
 }
 
+export interface QueuePointRuntimeState {
+  queuePointId: string;
+  occupiedRobotId?: string;
+  occupiedTaskId?: string;
+  reservedRobotIds: string[];
+  reservedTaskIds: string[];
+  capacity: number;
+}
+
 export interface ReservationRecord {
   reservationId?: string;
   robotId?: string;
@@ -216,6 +225,7 @@ export interface SimulationState {
   failedTasks: SimulationTask[];
   reservationTable: ReservationTableSnapshot;
   stationQueues: StationQueue[];
+  queuePointStates: Record<string, QueuePointRuntimeState>;
   queueLaneStates: Record<string, QueueLaneRuntimeState>;
   eventLog: SimulationEvent[];
   trafficDiagnostics: TrafficDiagnostics;

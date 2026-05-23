@@ -18,6 +18,7 @@ import {
   stepSimulation
 } from "../src/simulation/simulationEngine";
 import { useUiStore } from "../src/store/uiStore";
+import { cellKey } from "../src/utils/gridMath";
 import { rackOccupiedCells } from "../src/utils/rackFootprint";
 
 function simLayout(): WarehouseLayout {
@@ -192,7 +193,7 @@ describe("2D simulation foundation", () => {
     expect(state.robots[0].carryingRackId).toBeUndefined();
   });
 
-  it("station queues process robots FIFO", () => {
+  it("station pre-point traffic prevents fake station service while robots wait", () => {
     const layout = simLayout();
     let state = initializeSimulation(layout, { ...fastConfig, robotCount: 2, taskCount: 2, stationServiceTimeSec: 2 });
     const station = layout.stations[0];
@@ -200,7 +201,13 @@ describe("2D simulation foundation", () => {
     const second = createTaskForRackStation(layout, layout.racks[1].id, station.id, 0, 1)!;
     state.tasks = [first, second];
     for (let index = 0; index < 10; index += 1) state = stepSimulation(layout, state, fastConfig, 1);
-    expect(state.eventLog.some((event) => event.message.includes("started station service"))).toBe(true);
+    const serviceStarts = state.eventLog.filter((event) => event.message.includes("started station service"));
+    expect(serviceStarts.every((event) => {
+      const robot = state.robots.find((item) => item.robotId === event.robotId);
+      return !robot || cellKey(robot.currentCell) === cellKey(station.cell);
+    })).toBe(true);
+    const occupiedCells = state.robots.filter((robot) => robot.assignedTaskId).map((robot) => cellKey(robot.currentCell));
+    expect(new Set(occupiedCells).size).toBe(occupiedCells.length);
   });
 
   it("simulation reset clears robots, tasks, logs, and metrics", () => {

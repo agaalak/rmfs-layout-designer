@@ -4,8 +4,9 @@ import type { Rack } from "../models/rack";
 import type { Station } from "../models/station";
 import { buildRoadGraph, rotationCellNodes, stationNodes } from "../graph/graphBuilder";
 import { shortestPathBetweenSets } from "../graph/shortestPath";
+import { deriveDirectedLinksFromCells } from "../utils/directionLinks";
 import { cellKey, manhattanMeters, parseCellKey } from "../utils/gridMath";
-import { stationQueueLanes } from "../utils/queueLanes";
+import { queuePointVisitRequired, queuePointsForStation } from "../utils/queuePoints";
 import { ensureStorageLocations } from "../utils/storageLocations";
 
 function nodesToCells(path: string[] = []): GridCell[] {
@@ -45,7 +46,8 @@ function layoutWithTemporaryCells(layout: WarehouseLayout, temporaryCells: GridC
       zoneId: existing?.zoneId
     });
   }
-  return { ...layout, cells: [...map.values()] };
+  const cells = [...map.values()];
+  return { ...layout, cells, directedLinks: deriveDirectedLinksFromCells({ grid: layout.grid, cells }) };
 }
 
 function layoutWithTemporaryServiceCell(layout: WarehouseLayout, serviceCell: GridCell): WarehouseLayout {
@@ -88,30 +90,30 @@ export function findPathToNearestRackApproach(layout: WarehouseLayout, startCell
   return findPathToRackServiceCell(layout, startCell, rack);
 }
 
-export function findPathToStationQueue(layout: WarehouseLayout, startCell: GridCell, station: Station, preferredQueueLaneId?: string, targetQueueCell?: GridCell): GridCell[] {
-  const graphLayout = layoutWithTemporaryCells(layout, [startCell]);
+export function findPathToStationQueue(layout: WarehouseLayout, startCell: GridCell, station: Station, preferredQueuePointId?: string, targetQueueCell?: GridCell): GridCell[] {
+  const graphLayout = layoutWithTemporaryCells(layout, [startCell, station.cell, ...(targetQueueCell ? [targetQueueCell] : [])]);
   const graph = buildRoadGraph(graphLayout);
-  const lanes = stationQueueLanes(layout, station).sort((a, b) => {
-    if (a.queueLaneId === preferredQueueLaneId) return -1;
-    if (b.queueLaneId === preferredQueueLaneId) return 1;
-    return 0;
+  const points = queuePointsForStation(layout, station).sort((a, b) => {
+    if (a.queuePointId === preferredQueuePointId) return -1;
+    if (b.queuePointId === preferredQueuePointId) return 1;
+    return a.priority - b.priority || a.queuePointId.localeCompare(b.queuePointId);
   });
-  const candidates = lanes
-    .map((lane) => {
-      const pathToEntry = shortestPathBetweenSets(graph, [cellKey(startCell)], [cellKey(lane.entryCell)]);
-      if (!pathToEntry) return undefined;
-      const targetIndex = targetQueueCell ? lane.cells.find((item) => cellKey(item.cell) === cellKey(targetQueueCell))?.queueIndex : undefined;
-      if (targetQueueCell && targetIndex === undefined) return undefined;
-      const laneCells = targetIndex === undefined ? lane.cells : lane.cells.filter((item) => item.queueIndex <= targetIndex);
-      const lanePath = targetIndex === undefined ? [...laneCells.map((item) => item.cell), station.cell] : laneCells.map((item) => item.cell);
-      return {
-        distance: pathToEntry.distance + lanePath.length,
-        path: appendWithoutDuplicate(nodesToCells(pathToEntry.path), lanePath)
-      };
-    })
-    .filter((item): item is { distance: number; path: GridCell[] } => Boolean(item))
-    .sort((a, b) => a.distance - b.distance);
-  if (candidates[0]) return candidates[0].path;
+  if (queuePointVisitRequired(station, points)) {
+    const candidates = points
+      .map((point) => {
+        const pathToPoint = shortestPathBetweenSets(graph, [cellKey(startCell)], [cellKey(point.cell)]);
+        if (!pathToPoint) return undefined;
+        const pointToStation = shortestPathBetweenSets(graph, [cellKey(point.cell)], stationNodes(station, graph));
+        if (!pointToStation) return undefined;
+        return {
+          distance: pathToPoint.distance + pointToStation.distance,
+          path: appendWithoutDuplicate(nodesToCells(pathToPoint.path), nodesToCells(pointToStation.path))
+        };
+      })
+      .filter((item): item is { distance: number; path: GridCell[] } => Boolean(item))
+      .sort((a, b) => a.distance - b.distance);
+    if (candidates[0]) return candidates[0].path;
+  }
   const targets = stationNodes(station, graph);
   const result = shortestPathBetweenSets(graph, [cellKey(startCell)], targets);
   return nodesToCells(result?.path);

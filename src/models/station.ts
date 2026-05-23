@@ -1,4 +1,5 @@
 import type { GridCell } from "./grid";
+import type { StationQueuePolicy } from "./queuePoint";
 import type { CardinalOrientation, RackFaceId } from "./rack";
 
 export type StationType = "PICK" | "REPLENISH" | "COMBI" | "PACK" | "QC" | "BUFFER";
@@ -14,6 +15,8 @@ export interface Station {
   requiredRackOrientationDeg: CardinalOrientation;
   targetServiceTimeSec: number;
   capacity: number;
+  queuePolicy?: StationQueuePolicy;
+  /** @deprecated Runtime station admission uses queuePoints. */
   queueLaneIds: string[];
   locked?: boolean;
 }

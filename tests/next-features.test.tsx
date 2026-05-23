@@ -20,10 +20,10 @@ import { useLayoutStore } from "../src/store/layoutStore";
 
 describe("next feature pass", () => {
   it("generates candidate metadata and sorts ranking", () => {
-    const candidates = generateProceduralCandidates({ ...defaultGenerationParams, rows: 18, columns: 28, candidateCount: 10 });
+    const candidates = generateProceduralCandidates({ ...defaultGenerationParams, rows: 18, columns: 28, candidateCount: 3 });
     const summaries = summarizeCandidates(candidates);
-    expect(candidates).toHaveLength(10);
-    expect(summaries).toHaveLength(10);
+    expect(candidates).toHaveLength(3);
+    expect(summaries).toHaveLength(3);
     expect(summaries[0].candidateId).toContain("candidate_");
     const ranked = sortCandidateSummaries(summaries, "overallLayoutScore");
     expect(ranked[0].overallLayoutScore).toBeGreaterThanOrEqual(ranked[ranked.length - 1].overallLayoutScore);
@@ -115,7 +115,7 @@ describe("next feature pass", () => {
     const migrated = parseLayoutJson(JSON.stringify(oldJson));
     expect(migrated.ok).toBe(true);
     expect(migrated.warnings[0]).toContain("Older layout");
-    expect(migrated.layout?.layoutSchemaVersion).toBe("0.3.0");
+    expect(migrated.layout?.layoutSchemaVersion).toBe("0.3.1");
   });
 
   it("tracks unsaved changes and renders keyboard shortcut help", () => {

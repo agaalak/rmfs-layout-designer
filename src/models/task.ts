@@ -46,6 +46,10 @@ export interface SimulationTask {
   operationalTaskId?: string;
   sourceStorageLocationId?: string;
   destinationStorageLocationId?: string;
+  queuePointId?: string;
+  queuePointCell?: GridCell;
+  visitedQueuePoint?: boolean;
+  /** @deprecated Runtime station admission uses queuePointId. */
   queueLaneId?: string;
   queueTargetCell?: GridCell;
   queueTargetIndex?: number;

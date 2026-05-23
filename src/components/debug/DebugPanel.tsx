@@ -91,7 +91,16 @@ export function DebugPanel() {
 
         <section className="mt-3 grid gap-2">
           <div className="panel-title">Queue / Station Runtime</div>
-          {inspectors.queueLanes.length === 0 ? <div className="empty-state">No queue lanes in the current layout.</div> : null}
+          {inspectors.queuePoints.length === 0 && inspectors.queueLanes.length === 0 ? <div className="empty-state">No queue pre-points in the current layout.</div> : null}
+          {inspectors.queuePoints.slice(0, 8).map((point) => (
+            <div key={point.queuePointId} className="rounded border border-border bg-teal-50 p-2 text-xs">
+              <div className="font-semibold">{point.queuePointId} at {point.cell}</div>
+              <div className="text-muted-foreground">
+                reserved {point.reservedRobotIds.length + point.reservedTaskIds.length} / occupied {point.occupiedRobotId ?? "none"} / capacity {point.capacity}
+              </div>
+              <div className="mt-1 truncate">stations {point.appliesToAllStations ? "all" : point.stationIds.join(", ") || "none"}</div>
+            </div>
+          ))}
           {inspectors.queueLanes.slice(0, 8).map((lane) => (
             <div key={lane.queueLaneId} className="rounded border border-border bg-teal-50 p-2 text-xs">
               <div className="font-semibold">{lane.queueLaneId} to {lane.stationId}</div>

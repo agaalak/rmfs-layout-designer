@@ -78,6 +78,15 @@ function addEnvelopeClaims(
   }
 }
 
+function anticipatedNextCellForStoppedRobot(state: SimulationState, robot: Robot): GridCell | undefined {
+  if (robot.state !== "ROTATING_WITH_RACK") return undefined;
+  const task = robot.assignedTaskId ? state.tasks.find((item) => item.taskId === robot.assignedTaskId) : undefined;
+  const path = robot.routePhase === "PRE_ROTATION" ? task?.routePlan?.loadedPathToStation : robot.routePhase === "POST_ROTATION" ? task?.routePlan?.returnPath : undefined;
+  if (!path || path.length === 0) return undefined;
+  const currentIndex = path.findIndex((cell) => sameCell(cell, robot.currentCell));
+  return currentIndex >= 0 ? path[currentIndex + 1] : path[1];
+}
+
 function taskAllowsRackOverlap(layout: WarehouseLayout, state: SimulationState, robot: Robot, cell: GridCell) {
   const task = robot.assignedTaskId ? state.tasks.find((item) => item.taskId === robot.assignedTaskId) : undefined;
   if (!task || robot.carryingRackId) return robot.carryingRackId;
@@ -148,6 +157,10 @@ function collectClaims(
     if (targetIsAlreadyOwned && robot.targetCell && !sameCell(robot.targetCell, robot.currentCell)) {
       addEnvelopeClaims(claims, layout, state, robot, robot.targetCell, "robot_target");
     }
+    const anticipatedNext = anticipatedNextCellForStoppedRobot(state, robot);
+    if (anticipatedNext && !sameCell(anticipatedNext, robot.currentCell)) {
+      addEnvelopeClaims(claims, layout, state, robot, anticipatedNext, "robot_target");
+    }
   }
   for (const laneState of Object.values(state.queueLaneStates ?? {})) {
     for (const queueCell of laneState.occupiedCells) {
@@ -160,6 +173,19 @@ function collectClaims(
         kind: "queue_reservation"
       });
     }
+  }
+  for (const [queuePointId, pointState] of Object.entries(state.queuePointStates ?? {})) {
+    const queuePoint = layout.queuePoints?.find((point) => point.queuePointId === queuePointId);
+    if (!queuePoint) continue;
+    const ownerId = pointState.occupiedRobotId ?? pointState.reservedRobotIds[0] ?? pointState.occupiedTaskId ?? pointState.reservedTaskIds[0];
+    if (!ownerId) continue;
+    claims.push({
+      cell: queuePoint.cell,
+      ownerId,
+      robotId: pointState.occupiedRobotId ?? pointState.reservedRobotIds[0],
+      taskId: pointState.occupiedTaskId ?? pointState.reservedTaskIds[0],
+      kind: "queue_reservation"
+    });
   }
   for (const [stationId, stationState] of Object.entries(state.stationStates ?? {})) {
     if (!stationState.activeRobotId) continue;
@@ -203,6 +229,39 @@ function denyRobot(robot: Robot, denial: TrafficMoveDenial, config: SimulationCo
     pathProgress: robot.routeIndex,
     waitingReason: denial.reason,
     conflictTarget: denial.conflictTarget,
+    blockedSinceSec: robot.blockedSinceSec ?? simTimeSec,
+    totalWaitTimeSec: (robot.totalWaitTimeSec ?? 0) + config.reservationTimeStepSec
+  };
+}
+
+function backoffIfBlockingHigherPriority(
+  layout: WarehouseLayout,
+  state: SimulationState,
+  robots: Robot[],
+  robot: Robot,
+  denial: TrafficMoveDenial,
+  config: SimulationConfig,
+  simTimeSec: number
+): Robot | undefined {
+  const blocker = denial.conflictTarget ? robots.find((item) => item.robotId === denial.conflictTarget) : undefined;
+  const blockerNext = blocker?.currentPath?.[blocker.routeIndex + 1];
+  if (!blocker || !sameCell(blockerNext, robot.currentCell)) return undefined;
+  const previousCell = robot.currentPath[robot.routeIndex - 1];
+  if (!previousCell) return undefined;
+  const claims = collectClaims(layout, state, robots, new Set(), robot.robotId);
+  const envelope = getRobotEnvelopeAtCell(layout, state, robot, previousCell);
+  if (blockedByClaim(claims, robot, envelope.occupiedCells)) return undefined;
+  if (envelopeOverlapsBlockedCells(layout, envelope).length > 0) return undefined;
+  return {
+    ...robot,
+    currentCell: previousCell,
+    pose: poseForCell(previousCell, yawBetween(robot.currentCell, previousCell)),
+    routeIndex: Math.max(0, robot.routeIndex - 1),
+    segmentProgressM: 0,
+    pathProgress: Math.max(0, robot.routeIndex - 1),
+    targetCell: undefined,
+    waitingReason: `Backed off from ${cellKey(robot.currentCell)} to clear ${blocker.robotId}`,
+    conflictTarget: blocker.robotId,
     blockedSinceSec: robot.blockedSinceSec ?? simTimeSec,
     totalWaitTimeSec: (robot.totalWaitTimeSec ?? 0) + config.reservationTimeStepSec
   };
@@ -406,7 +465,8 @@ export function applyTrafficMoveGate(
       if (denial) {
         deniedMoves.push(denial);
         events.push(deniedEvent(denial, state.simTimeSec));
-        robots = robots.map((item) => (item.robotId === currentRobot.robotId ? denyRobot(item, denial!, config, state.simTimeSec) : item));
+        const backedOff = backoffIfBlockingHigherPriority(layout, state, robots, currentRobot, denial, config, state.simTimeSec);
+        robots = robots.map((item) => (item.robotId === currentRobot.robotId ? backedOff ?? denyRobot(item, denial!, config, state.simTimeSec) : item));
         robot = robots.find((item) => item.robotId === originalRobot.robotId);
         break;
       }

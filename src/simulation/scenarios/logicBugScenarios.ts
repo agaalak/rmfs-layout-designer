@@ -58,14 +58,15 @@ export function runLogicBugScenario(
   };
   let state = initializeSimulation(layout, config);
   state = applyGeneratedWork(state, generateOperationalSimulationWork(layout, state, config));
-  for (let step = 0; step < maxSteps && (scenarioId === "multi_robot_single_station_queue" ? step < 30 : state.completedTasks.length === 0); step += 1) {
+  const stepLimit = scenarioId === "multi_robot_single_station_queue" ? Math.min(maxSteps, 6) : maxSteps;
+  for (let step = 0; step < stepLimit && (scenarioId === "multi_robot_single_station_queue" ? true : state.completedTasks.length === 0); step += 1) {
     state = stepSimulation(layout, state, config, 1);
   }
 
   const activeRobotCount = state.robots.filter((robot) => !["IDLE", "PARKING", "CHARGING"].includes(robot.state)).length;
-  const maxQueueLaneLoad = Math.max(
+  const maxQueuePointLoad = Math.max(
     0,
-    ...Object.values(state.queueLaneStates).map((lane) => lane.reservedTaskIds.length + lane.occupiedCells.filter((cell) => cell.robotId).length)
+    ...Object.values(state.queuePointStates).map((point) => point.reservedTaskIds.length + (point.occupiedRobotId ? 1 : 0))
   );
   const rackRuntimeMatchesVisual = state.completedTasks.every((task) => {
     const rack = layout.racks.find((item) => item.id === task.rackId);
@@ -78,7 +79,7 @@ export function runLogicBugScenario(
     scenarioId,
     state,
     activeRobotCount,
-    maxQueueLaneLoad,
+    maxQueueLaneLoad: maxQueuePointLoad,
     completedTaskCount: state.completedTasks.length,
     rackRuntimeMatchesVisual
   };

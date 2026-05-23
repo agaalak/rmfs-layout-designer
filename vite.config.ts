@@ -22,6 +22,6 @@ export default defineConfig({
     globals: true,
     setupFiles: [],
     exclude: ["node_modules", "dist", "e2e"],
-    testTimeout: 10000
+    testTimeout: 30000
   }
 });

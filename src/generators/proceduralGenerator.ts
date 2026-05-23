@@ -1,7 +1,7 @@
 import type { CellType, Direction, GridCell, LayoutCell } from "../models/grid";
 import { allDirections } from "../models/grid";
 import type { GenerationParams, LayoutCandidateSummary, WarehouseLayout } from "../models/layout";
-import type { QueueLane } from "../models/queue";
+import type { QueuePoint } from "../models/queuePoint";
 import type { Rack, RackFace } from "../models/rack";
 import type { Station, ServiceSide, StationType } from "../models/station";
 import { serviceSideOrientation } from "../models/station";
@@ -15,7 +15,8 @@ import { makeBinRecords } from "../utils/rackBins";
 import { rackOccupiedCells } from "../utils/rackFootprint";
 import { ensureStorageLocations } from "../utils/storageLocations";
 import { APP_VERSION, LAYOUT_SCHEMA_VERSION, normalizeLayoutSemantics } from "../utils/layoutSemantics";
-import { makeQueueLaneFromCells, stationQueueCells } from "../utils/queueLanes";
+import { deriveDirectedLinksFromCells } from "../utils/directionLinks";
+import { stationQueuePointCells } from "../utils/queuePoints";
 
 type CellMap = Map<string, CellType>;
 type RotationCellMap = Map<string, Pick<LayoutCell, "allowRotation" | "supportedRotationOrientationsDeg" | "rotationTimeSec" | "rotationCapacity" | "allowedRotationRackTypes">>;
@@ -85,6 +86,8 @@ export function makeLayoutShell(params: GenerationParams, mode: WarehouseLayout[
     racks: [],
     storageLocations: [],
     stations: [],
+    directedLinks: [],
+    queuePoints: [],
     queueLanes: [],
     chargingSpots: [],
     parkingSpots: [],
@@ -220,7 +223,7 @@ function makeQueue(cell: GridCell, side: ServiceSide, length: number, params: Ge
 function addStation(
   cells: CellMap,
   stations: Station[],
-  queueLanes: QueueLane[],
+  queuePoints: QueuePoint[],
   cell: GridCell,
   side: ServiceSide,
   type: StationType,
@@ -228,13 +231,22 @@ function addStation(
 ) {
   const queueCells = makeQueue(cell, side, 4, params);
   setCell(cells, cell, "STATION");
-  queueCells.forEach((queue) => setCell(cells, queue, "QUEUE"));
   const stationId = makeId("station");
-  const lane = makeQueueLaneFromCells(`queue_${stationId}_001`, stationId, [...queueCells].reverse(), cell);
-  if (lane) {
-    queueLanes.push(lane);
-    lane.cells.forEach((item) => setCell(cells, item.cell, "QUEUE"));
+  const queuePointCell = queueCells[0];
+  if (queuePointCell) {
+    setCell(cells, queuePointCell, "ROAD");
+    queuePoints.push({
+      queuePointId: `qpoint_${stationId}_001`,
+      cell: queuePointCell,
+      appliesToAllStations: false,
+      stationIds: [stationId],
+      priority: 0,
+      capacity: 1,
+      loadedOnly: true,
+      waitPolicy: "OCCUPY_POINT"
+    });
   }
+  queueCells.slice(1).forEach((queue) => setCell(cells, queue, "ROAD"));
   stations.push({
     id: stationId,
     stationId: nextSequentialId(type.toLowerCase(), stations.length),
@@ -245,18 +257,24 @@ function addStation(
     requiredRackOrientationDeg: serviceSideOrientation[side],
     targetServiceTimeSec: 30,
     capacity: 1,
-    queueLaneIds: lane ? [lane.queueLaneId] : []
+    queuePolicy: {
+      requireQueuePointVisit: Boolean(queuePointCell),
+      queuePointSelectionStrategy: "nearest_feasible",
+      sharedQueuePointsAllowed: true,
+      stationCapacity: 1
+    },
+    queueLaneIds: []
   });
 }
 
-function addExternalStations(cells: CellMap, stations: Station[], queueLanes: QueueLane[], params: GenerationParams) {
+function addExternalStations(cells: CellMap, stations: Station[], queuePoints: QueuePoint[], params: GenerationParams) {
   const cols = spreadIndices(params.stationCount, 3, params.columns - 4);
   cols.forEach((col, index) => {
     const side: ServiceSide = index % 2 === 0 ? "SOUTH" : "NORTH";
     addStation(
       cells,
       stations,
-      queueLanes,
+      queuePoints,
       { row: side === "SOUTH" ? params.rows - 1 : 0, col },
       side,
       index < 6 ? "PICK" : "REPLENISH",
@@ -265,23 +283,23 @@ function addExternalStations(cells: CellMap, stations: Station[], queueLanes: Qu
   });
 }
 
-function addInternalStations(cells: CellMap, stations: Station[], queueLanes: QueueLane[], params: GenerationParams, distributed: boolean) {
+function addInternalStations(cells: CellMap, stations: Station[], queuePoints: QueuePoint[], params: GenerationParams, distributed: boolean) {
   const rows = distributed
     ? spreadIndices(params.stationCount, Math.max(4, Math.floor(params.rows / 5)), Math.min(params.rows - 5, Math.floor((params.rows * 4) / 5)))
     : Array.from({ length: params.stationCount }, () => Math.floor(params.rows / 2));
   const cols = spreadIndices(params.stationCount, Math.floor(params.columns / 4), Math.floor((params.columns * 3) / 4));
   cols.forEach((col, index) => {
     const side: ServiceSide = index % 2 === 0 ? "NORTH" : "SOUTH";
-    addStation(cells, stations, queueLanes, { row: rows[index] ?? Math.floor(params.rows / 2), col }, side, index < 6 ? "PICK" : "REPLENISH", params);
+    addStation(cells, stations, queuePoints, { row: rows[index] ?? Math.floor(params.rows / 2), col }, side, index < 6 ? "PICK" : "REPLENISH", params);
   });
 }
 
-function addFlyingVStations(cells: CellMap, stations: Station[], queueLanes: QueueLane[], params: GenerationParams) {
+function addFlyingVStations(cells: CellMap, stations: Station[], queuePoints: QueuePoint[], params: GenerationParams) {
   const apexRow = params.rows - 1;
   const center = Math.floor(params.columns / 2);
   const cols = spreadIndices(params.stationCount, Math.max(2, center - 8), Math.min(params.columns - 3, center + 8));
   cols.forEach((col, index) => {
-    addStation(cells, stations, queueLanes, { row: apexRow, col }, "SOUTH", index < Math.ceil(params.stationCount * 0.75) ? "PICK" : "REPLENISH", params);
+    addStation(cells, stations, queuePoints, { row: apexRow, col }, "SOUTH", index < Math.ceil(params.stationCount * 0.75) ? "PICK" : "REPLENISH", params);
   });
 }
 
@@ -445,12 +463,12 @@ function stationRotationCandidates(station: Station, queueCells: GridCell[]): Gr
   ];
 }
 
-function addRotationCells(cells: CellMap, rotationCells: RotationCellMap, params: GenerationParams, stations: Station[], queueLanes: QueueLane[]) {
+function addRotationCells(cells: CellMap, rotationCells: RotationCellMap, params: GenerationParams, stations: Station[], queuePoints: QueuePoint[]) {
   const targetCount = Math.max(params.rotationZoneCount, stations.length * 2);
   for (const station of stations) {
     if (rotationCells.size >= targetCount) break;
     let addedForStation = 0;
-    for (const candidate of stationRotationCandidates(station, stationQueueCells({ queueLanes }, station))) {
+    for (const candidate of stationRotationCandidates(station, stationQueuePointCells({ ...makeLayoutShell(params, "procedural"), queuePoints, stations }, station))) {
       if (addedForStation >= 2 || rotationCells.size >= targetCount) break;
       if (!isRotationCellAvailable(cells, candidate, params)) continue;
       pushRotation(cells, rotationCells, candidate);
@@ -467,13 +485,11 @@ function addRotationCells(cells: CellMap, rotationCells: RotationCellMap, params
   }
 }
 
-function materializeCells(cells: CellMap, trafficMode: GenerationParams["trafficMode"], rotationCells: RotationCellMap, queueLanes: QueueLane[]): LayoutCell[] {
+function materializeCells(cells: CellMap, trafficMode: GenerationParams["trafficMode"], rotationCells: RotationCellMap): LayoutCell[] {
   const directions: Direction[] = trafficMode === "two_way" ? allDirections : ["east", "south"];
-  const queueDirectionByCell = new Map(queueLanes.flatMap((lane) => lane.cells.map((item) => [cellKey(item.cell), item.directionToNext] as const)));
   return [...cells.entries()].map(([key, cellType]) => {
     const [row, col] = key.split(":").map(Number);
-    const queueDirection = queueDirectionByCell.get(key);
-    return { row, col, cellType, allowedDirections: queueDirection ? [queueDirection] : directions, ...(rotationCells.get(key) ?? {}) };
+    return { row, col, cellType, allowedDirections: directions, ...(rotationCells.get(key) ?? {}) };
   });
 }
 
@@ -481,7 +497,7 @@ export function generateProceduralLayout(params: GenerationParams): WarehouseLay
   const layout = makeLayoutShell(params, "procedural");
   const cells: CellMap = new Map();
   const stations: Station[] = [];
-  const queueLanes: QueueLane[] = [];
+  const queuePoints: QueuePoint[] = [];
   const racks: Rack[] = [];
   const chargers: ChargingSpot[] = [];
   const parking: ParkingSpot[] = [];
@@ -490,27 +506,30 @@ export function generateProceduralLayout(params: GenerationParams): WarehouseLay
   if (params.layoutFamily === "true_flying_v") markFlyingVRoads(cells, params);
   else markAisles(cells, params, params.layoutFamily === "dense_with_cross_aisles");
 
-  if (params.layoutFamily === "true_flying_v") addFlyingVStations(cells, stations, queueLanes, params);
-  else if (params.layoutFamily === "internal_centralized") addInternalStations(cells, stations, queueLanes, params, false);
-  else if (params.layoutFamily === "internal_distributed") addInternalStations(cells, stations, queueLanes, params, true);
+  if (params.layoutFamily === "true_flying_v") addFlyingVStations(cells, stations, queuePoints, params);
+  else if (params.layoutFamily === "internal_centralized") addInternalStations(cells, stations, queuePoints, params, false);
+  else if (params.layoutFamily === "internal_distributed") addInternalStations(cells, stations, queuePoints, params, true);
   else if (params.layoutFamily === "hybrid_external_internal") {
-    addExternalStations(cells, stations, queueLanes, { ...params, stationCount: Math.ceil(params.stationCount / 2) });
-    addInternalStations(cells, stations, queueLanes, { ...params, stationCount: Math.floor(params.stationCount / 2) }, true);
-  } else addExternalStations(cells, stations, queueLanes, params);
+    addExternalStations(cells, stations, queuePoints, { ...params, stationCount: Math.ceil(params.stationCount / 2) });
+    addInternalStations(cells, stations, queuePoints, { ...params, stationCount: Math.floor(params.stationCount / 2) }, true);
+  } else addExternalStations(cells, stations, queuePoints, params);
 
   addChargers(cells, chargers, params);
   addParking(cells, parking, params);
-  addRotationCells(cells, rotationCells, params, stations, queueLanes);
+  addRotationCells(cells, rotationCells, params, stations, queuePoints);
   addRacks(cells, racks, params);
+  const materializedCells = materializeCells(cells, params.trafficMode, rotationCells);
 
   return ensureStorageLocations(normalizeLayoutSemantics({
     ...layout,
     name: params.rows <= 24 && params.columns <= 32 ? "Small RMFS Demo Layout" : "Mode B Generated Layout",
     modifiedAt: new Date().toISOString(),
-    cells: materializeCells(cells, params.trafficMode, rotationCells, queueLanes),
+    cells: materializedCells,
     racks,
     stations,
-    queueLanes,
+    directedLinks: deriveDirectedLinksFromCells({ grid: layout.grid, cells: materializedCells }),
+    queuePoints,
+    queueLanes: [],
     chargingSpots: chargers,
     parkingSpots: parking,
     rotationZones: [],
@@ -518,7 +537,7 @@ export function generateProceduralLayout(params: GenerationParams): WarehouseLay
       ? ({
           ...(layout.simulationConfig ?? {}),
           robotCount: 4,
-          taskCount: 6,
+          taskCount: 1,
           unloadedSpeedMps: 2.4,
           loadedSpeedMps: 2,
           liftTimeSec: 4,
@@ -538,12 +557,11 @@ export function generateProceduralLayout(params: GenerationParams): WarehouseLay
 function applyCurrentCustomSmallDemoDefault(layout: WarehouseLayout): WarehouseLayout {
   const removedStation = layout.stations.find((station) => station.stationId === "pick_002");
   if (!removedStation) return layout;
-  const removedLaneIds = new Set(removedStation.queueLaneIds);
-  const removedCells = new Set<string>([cellKey(removedStation.cell)]);
-  for (const lane of layout.queueLanes) {
-    if (!removedLaneIds.has(lane.queueLaneId)) continue;
-    for (const item of lane.cells) removedCells.add(cellKey(item.cell));
-  }
+  const removedQueuePointIds = new Set((layout.queuePoints ?? []).filter((point) => point.stationIds.includes(removedStation.id)).map((point) => point.queuePointId));
+  const removedCells = new Set<string>([
+    cellKey(removedStation.cell),
+    ...(layout.queuePoints ?? []).filter((point) => removedQueuePointIds.has(point.queuePointId)).map((point) => cellKey(point.cell))
+  ]);
   const cells = layout.cells.map((cell) =>
     removedCells.has(cellKey(cell))
       ? {
@@ -562,7 +580,8 @@ function applyCurrentCustomSmallDemoDefault(layout: WarehouseLayout): WarehouseL
     ...layout,
     cells,
     stations: layout.stations.filter((station) => station.id !== removedStation.id),
-    queueLanes: layout.queueLanes.filter((lane) => !removedLaneIds.has(lane.queueLaneId)),
+    queuePoints: (layout.queuePoints ?? []).filter((point) => !removedQueuePointIds.has(point.queuePointId)),
+    queueLanes: [],
     metadata: {
       ...layout.metadata,
       defaultLayoutSource: "user_custom_layout_g3oeuj_0w3t",
@@ -714,7 +733,7 @@ export function applyHybridFill(base: WarehouseLayout, params: GenerationParams)
   );
   const occupiedByBaseObjects = new Set<string>([
     ...base.racks.flatMap((rack) => rackOccupiedCells(rack, base.grid).map(cellKey)),
-    ...base.stations.flatMap((station) => [station.cell, ...stationQueueCells(base, station)].map(cellKey)),
+    ...base.stations.flatMap((station) => [station.cell, ...stationQueuePointCells(base, station)].map(cellKey)),
     ...base.chargingSpots.flatMap((charger) => charger.cells.map(cellKey)),
     ...base.parkingSpots.map((parking) => cellKey(parking.cell))
   ]);
@@ -730,8 +749,19 @@ export function applyHybridFill(base: WarehouseLayout, params: GenerationParams)
       ...lockedCells.values()
     ],
     racks: [...base.racks, ...generated.racks.filter((rack) => !objectTouchesProtected(rackOccupiedCells(rack, generated.grid)))],
-    stations: [...base.stations, ...generated.stations.filter((station) => !objectTouchesProtected([station.cell, ...stationQueueCells(generated, station)]))],
-    queueLanes: [...(base.queueLanes ?? []), ...(generated.queueLanes ?? []).filter((lane) => !objectTouchesProtected(lane.cells.map((item) => item.cell)))],
+    stations: [...base.stations, ...generated.stations.filter((station) => !objectTouchesProtected([station.cell, ...stationQueuePointCells(generated, station)]))],
+    queuePoints: [
+      ...(base.queuePoints ?? []),
+      ...(generated.queuePoints ?? []).filter((point) => !objectTouchesProtected([point.cell]))
+    ],
+    directedLinks: deriveDirectedLinksFromCells({
+      grid: generated.grid,
+      cells: [
+        ...generated.cells.filter((cell) => !protectedCells.has(cellKey(cell))),
+        ...lockedCells.values()
+      ]
+    }),
+    queueLanes: [],
     chargingSpots: [...base.chargingSpots, ...generated.chargingSpots.filter((charger) => !objectTouchesProtected(charger.cells))],
     parkingSpots: [...base.parkingSpots, ...generated.parkingSpots.filter((parking) => !objectTouchesProtected([parking.cell]))],
     rotationZones: [],

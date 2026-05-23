@@ -13,7 +13,7 @@ This is not the final 3D robot simulator, and it is not a full RAWSim-O replacem
 - Create Hybrid layouts by drawing fixed constraints first, then filling the rest procedurally.
 - Add, drag, drop, select, multi-select, delete, copy, paste, and rotate layout objects.
 - Configure warehouse rows, columns, cell size, and physical dimensions.
-- Model racks/pods, station service cells, directional queue lanes, chargers, parking, blocked cells, human zones, docks, traffic directions, and rotation-enabled cells.
+- Model racks/pods, station service cells, queue pre-points, chargers, parking, blocked cells, human zones, docks, directed traffic links, and rotation-enabled cells.
 - Run validation and analytics without simulating robot movement.
 - Export/import layout JSON.
 - Export analytics JSON, CSV, Markdown report, PNG, and SVG.
@@ -41,7 +41,7 @@ On screens below the desktop editing breakpoint, the Design toolbox and workflow
 
 ## Demo Presets
 
-The first load uses **Small Demo**, a compact `22 x 30` RMFS layout based on the current user-tested custom layout: connected roads, 25 racks, 2 external pick stations, directional queue lanes, 2 chargers, 4 parking spots, rotation-enabled road cells, sample rack-bin inventory, and simulation defaults for a small robot/task count.
+The first load uses **Small Demo**, a compact `22 x 30` RMFS layout based on the current user-tested custom layout: connected roads, 25 racks, 2 external pick stations, queue pre-points, 2 chargers, 4 parking spots, rotation-enabled road cells, sample rack-bin inventory, and conservative simulation defaults for a small robot/task count.
 
 The previous large `40 x 60` style layout remains available as **Large Demo** for stress and visual-density checks. Use the Design toolbar or the quick-start panel to switch demos.
 
@@ -53,17 +53,19 @@ Mode A, manual, starts with an empty grid. Use the left toolbox to draw roads, r
 
 Mode B, procedural, opens a generation dialog where you choose the layout family, dimensions, rack fill ratio, aisle spacing, station count, charger count and size, parking count, traffic mode, rotation-cell count, and candidate count. The app generates alternatives, opens a candidate comparison drawer, lets you sort by score/density/distance/congestion/errors, previews selected candidates on the canvas, and applies the selected candidate as a fully editable layout. The stable generator focus is traditional external, internal centralized, internal distributed, hybrid external/internal, and dense cross-aisle layouts. True Flying-V remains Experimental, and the old Flying-V placeholder is disabled.
 
-Hybrid mode uses the current layout as fixed constraints. Draw walls, columns, human zones, docks, mandatory aisles, fixed stations, chargers, and parking first, then mark important cells or objects as locked in the property panel. The Hybrid generator fills racks, rack blocks, aisles, queue lanes, rotation-enabled cells, and remaining support cells around protected constraints.
+Hybrid mode uses the current layout as fixed constraints. Draw walls, columns, human zones, docks, mandatory aisles, fixed stations, chargers, and parking first, then mark important cells or objects as locked in the property panel. The Hybrid generator fills racks, rack blocks, aisles, queue pre-points, rotation-enabled cells, and remaining support cells around protected constraints.
 
-## Corrected Queue, Station, Pod, And Rotation Semantics
+## Corrected Direction, Queue, Station, Pod, And Rotation Semantics
 
-Schema `0.3.0` corrects the physical RMFS semantics:
+Schema `0.3.1` keeps the physical RMFS semantics corrected and adds a directed-link traffic graph:
 
-- Queue cells are directional waiting cells in first-class `QueueLane` records. They are not station cells.
-- A queue lane leads to a station service cell. Station service starts only after the robot enters `station.cell`.
+- Direction is a center-to-center neighbor edge. One-way aisles are one directed link; two-way aisles are opposite directed links.
+- Queue lanes are deprecated for runtime behavior. Queue is now represented by `QueuePoint` pre-station resources that can apply to one station or all stations.
+- A loaded robot must pass through its selected queue pre-point before entering the station when the station policy requires it.
+- Station service starts only after the robot enters `station.cell`.
 - A storage location has a `podServiceCell`. Robots must enter that cell before lifting or dropping a rack/pod.
 - Rotation is not a cell type. Rotation is a property on traversable cells, managed by the Direction/Traffic tool.
-- Old layouts with station-owned queue cells or rotation zones are migrated on import.
+- Old layouts with station-owned queue cells, queue lanes, or rotation zones are migrated on import.
 
 ## Grid Size And Rack Footprint
 
@@ -170,11 +172,11 @@ The simulation panel can:
 - Filter an event log by robot, task, entity, message, or severity.
 - Export simulation config JSON, event log CSV, metrics CSV, orders CSV, and inventory CSV.
 
-Robots follow shortest paths over the layout graph instead of driving straight through racks or walls. The planner respects one-way/two-way traffic rules, avoids blocked cells, enters the storage `podServiceCell` for pickup/dropoff, and routes through ordered queue lanes into the station service cell. A practical time-expanded reservation table prevents obvious same-cell, edge-swap, loaded-envelope, and simple resource-capacity conflicts by inserting wait steps when possible.
+Robots follow shortest paths over the layout graph instead of driving straight through racks or walls. The planner respects directed neighbor links, avoids blocked cells, enters the storage `podServiceCell` for pickup/dropoff, and routes loaded station visits through a selected queue pre-point before the station service cell when required. A practical time-expanded reservation table prevents obvious same-cell, edge-swap, loaded-envelope, and simple resource-capacity conflicts by inserting wait steps when possible.
 
-Recent logic fixes removed the old one-active-task-per-station dispatch gate. Multiple robots can now be assigned to the same station when queue lane capacity exists, while station service itself remains one-at-a-time unless capacity is configured higher. Simulation Mode also renders stored racks from runtime rack/storage state, so `nearest_available_storage` reallocation appears at the actual destination storage cell instead of snapping back to the design-time home.
+Recent logic fixes removed the old one-active-task-per-station dispatch gate. Multiple robots can now be assigned to the same station when queue pre-point capacity and traffic ownership allow it, while station service itself remains one-at-a-time unless capacity is configured higher. Simulation Mode also renders stored racks from runtime rack/storage state, so `nearest_available_storage` reallocation appears at the actual destination storage cell instead of snapping back to the design-time home.
 
-The latest RAWSim-O alignment pass makes queue lanes the simulator's single queue source of truth. Dispatch reserves the physical queue entry cell, robots advance one ordered queue cell at a time, and station service starts only after the robot enters `station.cell`. Station `shortest_queue` scoring reads live queue-lane occupancy/reservations and active service occupancy, not stale station `waitingRobotIds`. Nearest-rack scoring routes to the same `podServiceCell` used by pickup execution. Generic shortest-path routing blocks station cells as pass-through shortcuts unless the route is specifically targeting station service.
+The latest RAWSim-O alignment pass replaces queue-lane runtime assumptions with queue pre-points. Dispatch and station assignment score queue pre-point load, reservations, active service occupancy, and traffic feasibility instead of stale station `waitingRobotIds`. Nearest-rack scoring routes to the same `podServiceCell` used by pickup execution. Generic shortest-path routing blocks station cells as pass-through shortcuts unless the route is specifically targeting station service.
 
 Traffic control now includes carried-rack envelopes for `1x1`, `1x2`, `2x1`, and `2x2` racks, simple capacity reservations for rotation-enabled cells and queue/service resources, conservative deadlock detection, a pre-move traffic ownership gate, runtime collision guards, and deterministic collision scenarios for regression tests. The pre-move gate is the primary safety layer: a robot must be granted ownership of the next cell/envelope before it interpolates toward that cell. If the cell is occupied or claimed, the robot waits outside it and the event log/debug inspectors explain the blocker. The runtime guard remains a failsafe for any state that still violates collision invariants.
 
@@ -202,19 +204,19 @@ Open it with:
 
 The panel captures console errors/warnings, React render errors, unhandled promise rejections, user actions, simulation events, traffic/collision/deadlock events, invariant issues, and recent performance samples. It can export diagnostics JSON and an issue report JSON/Markdown bundle without sending anything to a server.
 
-For simulation QA, the panel also exposes queue-lane occupancy, station admission state, why-waiting explanations, recent controller decisions, and reservation snippets so a tester can see why a robot is waiting or why a station was selected.
+For simulation QA, the panel also exposes queue pre-point occupancy, station admission state, why-waiting explanations, recent controller decisions, and reservation snippets so a tester can see why a robot is waiting or why a station was selected.
 
 Dev/debug builds expose:
 
 - `window.__RMFS_DEBUG__` for diagnostics, state snapshots, recent actions, recent errors, and exports
-- `window.__RMFS_DEBUG__.getQueueLaneInspector()`, `getStationAdmissionTrace()`, `getWhyWaiting()`, `getControllerDecisionTrace()`, and `getReservationTimeline()` for live queue/service debugging
+- `window.__RMFS_DEBUG__.getQueuePointInspector()`, `getStationAdmissionTrace()`, `getWhyWaiting()`, `getControllerDecisionTrace()`, and `getReservationTimeline()` for live queue/service debugging. `getQueueLaneInspector()` remains as a compatibility alias.
 - `window.__RMFS_TEST__` for deterministic browser tests and emergency state inspection, including queue/station wait inspectors in dev/debug mode
 
 See [docs/LIVE_QA_DEBUGGING.md](docs/LIVE_QA_DEBUGGING.md) and [docs/LIVE_TESTING_PROTOCOL.md](docs/LIVE_TESTING_PROTOCOL.md).
 
 ## Import And Export
 
-Exported layout JSON includes `layoutSchemaVersion`, `appVersion`, timestamps, grid settings, cells, objects, queue lanes, rack faces/bins, storage locations, assumptions, scoring weights, and metadata. The current schema is `0.3.0`.
+Exported layout JSON includes `layoutSchemaVersion`, `appVersion`, timestamps, grid settings, cells, objects, queue pre-points, directed links, rack faces/bins, storage locations, assumptions, scoring weights, and metadata. The current schema is `0.3.1`.
 
 Import handles older layouts without a schema version by applying migration defaults. Invalid JSON returns a clear import error instead of crashing the app.
 

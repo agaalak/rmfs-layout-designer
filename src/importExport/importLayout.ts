@@ -49,6 +49,8 @@ export function parseLayoutJson(json: string): LayoutImportResult {
     racks: parsed.racks ?? [],
     storageLocations: parsed.storageLocations ?? [],
     stations: parsed.stations ?? [],
+    directedLinks: parsed.directedLinks ?? [],
+    queuePoints: parsed.queuePoints ?? [],
     queueLanes: parsed.queueLanes ?? [],
     chargingSpots: parsed.chargingSpots ?? [],
     parkingSpots: parsed.parkingSpots ?? [],
