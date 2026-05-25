@@ -285,6 +285,10 @@ test("experimental simulation can complete one simple task cycle", async ({ page
   await page.getByRole("button", { name: /Simulate workflow/ }).click();
   await expect(page.getByText("2D time-based playback")).toBeVisible();
   await expect(page.getByText(/Not full MAPF/).first()).toBeVisible();
+  await page.evaluate(() => {
+    const api = (window as unknown as { __RMFS_TEST__: any }).__RMFS_TEST__;
+    api.simulation.getState().setConfig({ taskCount: 1 });
+  });
   await page.getByRole("button", { name: "Initialize" }).click();
   await page.getByRole("button", { name: "Generate tasks" }).click();
   expect((await appState(page)).simInitialized).toBe(true);

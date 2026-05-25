@@ -96,7 +96,7 @@ export function DebugPanel() {
             <div key={point.queuePointId} className="rounded border border-border bg-teal-50 p-2 text-xs">
               <div className="font-semibold">{point.queuePointId} at {point.cell}</div>
               <div className="text-muted-foreground">
-                reserved {point.reservedRobotIds.length + point.reservedTaskIds.length} / occupied {point.occupiedRobotId ?? "none"} / capacity {point.capacity}
+                {point.waitPolicy} / reserved {point.reservedRobotIds.length + point.reservedTaskIds.length} / occupied {point.occupiedRobotId ?? "none"} / capacity {point.capacity}
               </div>
               <div className="mt-1 truncate">stations {point.appliesToAllStations ? "all" : point.stationIds.join(", ") || "none"}</div>
             </div>

@@ -200,3 +200,25 @@ Backlog:
 - Keep `QueueLane` and `QUEUE` only as deprecated import/migration compatibility while runtime uses `QueuePoint`.
 - Keep legacy `allowedDirections` only as a compatibility mirror. New graph construction should use `directedLinks`.
 - Bump layout schema to `0.3.1` because persisted layout shape gains `directedLinks`, `queuePoints`, and station `queuePolicy`.
+
+## 2026-05-24 Live Instance Follow-Up
+
+Observed issue:
+- The running Small Demo generated one task by default, so only one robot appeared to run.
+- When task count was forced higher after initialization, four robots were assigned, but single queue pre-points behaved too much like long-lived station locks.
+
+Root cause:
+- `simulationStore.initialize()` reapplied layout `simulationConfig` after user edits, including `taskCount: 1`.
+- Queue pre-point capacity was used as dispatch capacity for the entire task instead of as physical checkpoint occupancy.
+
+Fix:
+- User simulation config edits are tracked as overrides and survive initialization.
+- Small Demo task count is restored to six tasks.
+- Generated pre-points now use `HOLD_UPSTREAM`.
+- Queue pre-point reservations are released once the assigned robot reaches or passes the checkpoint.
+- Normal traffic denials now log as held moves before entry, not accepted collisions.
+
+Live smoke result:
+- Six tasks generated.
+- Four robots became assigned/active.
+- No duplicate sampled current, target, or pose cells were observed in the 160-step smoke run.

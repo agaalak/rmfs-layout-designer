@@ -16,7 +16,7 @@ describe("queue pre-point lifecycle", () => {
 
     state = reserveQueuePoint(state, point.queuePointId, state.robots[0].robotId, "task_queue_point");
     expect(state.queuePointStates[point.queuePointId].reservedTaskIds).toContain("task_queue_point");
-    expect(stationHasQueuePointDispatchCapacity(layout, state, station.id)).toBe(false);
+    expect(stationHasQueuePointDispatchCapacity(layout, state, station.id)).toBe(true);
 
     state = {
       ...state,
@@ -63,6 +63,15 @@ describe("queue pre-point lifecycle", () => {
     expect(state.queuePointStates[point.queuePointId].reservedTaskIds).toHaveLength(0);
   });
 
+  it("treats occupy-point pre-points as finite-capacity resources", () => {
+    const layout = generateSmallDemoLayout();
+    layout.queuePoints[0] = { ...layout.queuePoints[0], waitPolicy: "OCCUPY_POINT" };
+    const station = layout.stations.find((item) => layout.queuePoints[0].stationIds.includes(item.id)) ?? layout.stations[0];
+    let state = initializeSimulation(layout, defaultSimulationConfig);
+    state = reserveQueuePoint(state, layout.queuePoints[0].queuePointId, state.robots[0].robotId, "task_queue_point");
+    expect(stationHasQueuePointDispatchCapacity(layout, state, station.id)).toBe(false);
+  });
+
   it("does not admit a robot into an occupied station service cell from a pre-point", () => {
     const layout = generateSmallDemoLayout();
     const station = layout.stations[0];
@@ -102,4 +111,3 @@ describe("queue pre-point lifecycle", () => {
     expect(queued.waitingReason).toContain("Waiting at queue head");
   });
 });
-

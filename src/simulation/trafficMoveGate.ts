@@ -326,7 +326,7 @@ function deniedEvent(denial: TrafficMoveDenial, timeSec: number): SimulationEven
     entityId: denial.robotId,
     robotId: denial.robotId,
     taskId: denial.taskId,
-    message: `Collision prevented before entry: ${denial.reason}`,
+    message: `Move held before entry: ${denial.reason}`,
     details: {
       fromCell: denial.fromCell,
       toCell: denial.toCell,

@@ -22,6 +22,11 @@ export function queuePointRuntimeLoad(state: Pick<SimulationState, "queuePointSt
   return occupied + reserved;
 }
 
+export function queuePointIsDispatchable(state: Pick<SimulationState, "queuePointStates" | "robots" | "tasks">, point: QueuePoint) {
+  if (point.waitPolicy === "HOLD_UPSTREAM") return true;
+  return queuePointRuntimeLoad(state, point) < Math.max(1, point.capacity);
+}
+
 export function chooseQueuePointForStation(
   layout: WarehouseLayout,
   state: Pick<SimulationState, "queuePointStates" | "robots" | "tasks">,
@@ -34,11 +39,10 @@ export function chooseQueuePointForStation(
       load: queuePointRuntimeLoad(state, point),
       capacity: Math.max(1, point.capacity)
     }))
-    .filter((item) => item.load < item.capacity)
+    .filter((item) => queuePointIsDispatchable(state, item.point))
     .sort((a, b) => a.load - b.load || a.point.priority - b.point.priority || a.point.queuePointId.localeCompare(b.point.queuePointId))[0]?.point;
 }
 
 export function queuePointVisitRequired(station: Pick<Station, "queuePolicy"> | undefined, points: QueuePoint[]) {
   return (station?.queuePolicy?.requireQueuePointVisit ?? points.length > 0) && points.length > 0;
 }
-

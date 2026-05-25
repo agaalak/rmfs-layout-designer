@@ -12,7 +12,7 @@ Station cells, pod service cells, chargers, parking cells, and queue pre-points 
 
 ## Current UI State
 
-The existing Direction/Traffic tool still exposes cell direction controls, but every edit now synchronizes the underlying directed links. The canvas arrow layer renders those links center-to-center, including offset arrows for bidirectional edges.
+The existing Direction/Traffic tool still exposes cell direction controls, but every edit now synchronizes the underlying directed links. The canvas arrow layer renders meaningful constrained or one-way links center-to-center instead of painting every unrestricted bidirectional road edge. Direction arrows use stronger blue/teal strokes with rounded caps so dense traffic structure is easier to read without slowing the canvas.
 
 ## Limitations
 

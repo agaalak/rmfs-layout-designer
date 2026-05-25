@@ -895,6 +895,34 @@ function updateStationQueues(layout: WarehouseLayout, state: SimulationState, co
   return next;
 }
 
+function markVisitedQueuePoints(layout: WarehouseLayout, state: SimulationState): SimulationState {
+  const visitedTaskIds = new Set<string>();
+  for (const robot of state.robots) {
+    if (!robot.assignedTaskId) continue;
+    const task = state.tasks.find((item) => item.taskId === robot.assignedTaskId);
+    if (!task?.queuePointId) continue;
+    const point = layout.queuePoints.find((item) => item.queuePointId === task.queuePointId);
+    const station = task.stationId ? layout.stations.find((item) => item.id === task.stationId) : undefined;
+    if (
+      task.visitedQueuePoint ||
+      (point && cellKey(robot.currentCell) === cellKey(point.cell)) ||
+      (station && cellKey(robot.currentCell) === cellKey(station.cell)) ||
+      ["QUEUING_AT_STATION", "SERVICING_AT_STATION", "RETURNING_RACK", "DROPPING_RACK"].includes(robot.state)
+    ) {
+      visitedTaskIds.add(task.taskId);
+    }
+  }
+  if (visitedTaskIds.size === 0) return state;
+  let next = state;
+  next.tasks = next.tasks.map((task) => (visitedTaskIds.has(task.taskId) ? { ...task, visitedQueuePoint: true } : task));
+  for (const taskId of visitedTaskIds) {
+    const task = next.tasks.find((item) => item.taskId === taskId);
+    const robot = next.robots.find((item) => item.assignedTaskId === taskId);
+    if (task?.queuePointId && robot) next = releaseQueuePoint(next, task.queuePointId, robot.robotId, task.taskId);
+  }
+  return next;
+}
+
 function handleRobotTransitions(layout: WarehouseLayout, state: SimulationState, config: SimulationConfig): SimulationState {
   let next = structuredClone(state) as SimulationState;
   for (const robot of next.robots) {
@@ -1263,6 +1291,7 @@ export function stepSimulation(layout: WarehouseLayout, state: SimulationState, 
   next = moveGate.state;
   for (const event of moveGate.events) next.eventLog = log(next.eventLog, event);
   next = applyCollisionGuard(normalized, beforeMove, next, config);
+  next = markVisitedQueuePoints(normalized, next);
   next = syncQueuePointStates(normalized, next);
   next = syncQueueLaneStates(normalized, next);
   next = handleRobotTransitions(normalized, next, config);

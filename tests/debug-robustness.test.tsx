@@ -10,6 +10,7 @@ import { useUiStore } from "../src/store/uiStore";
 import { getControllerStrategyDescription } from "../src/simulation/controllers/controllerRegistry";
 import { checkSimulationInvariants } from "../src/simulation/invariants";
 import { initializeSimulation } from "../src/simulation/simulationEngine";
+import { defaultSimulationConfig } from "../src/models/simulation";
 
 function ThrowingComponent() {
   throw new Error("debug boundary test");
@@ -40,6 +41,17 @@ describe("debug and robustness instrumentation", () => {
     expect((bundle.layout as { present: { layoutId: string } }).present.layoutId).toBe(layout.layoutId);
     expect((bundle.simulation as { state: { initialized: boolean } }).state.initialized).toBe(true);
     expect(bundle.debug.events.length).toBeGreaterThan(0);
+  });
+
+  it("keeps user simulation config overrides when initialization applies layout defaults", () => {
+    const layout = generateSmallDemoLayout();
+    useSimulationStore.setState({ config: defaultSimulationConfig, configOverrides: {} });
+    useSimulationStore.getState().setConfig({ taskCount: 4, robotCount: 3 });
+    useSimulationStore.getState().initialize(layout);
+    useSimulationStore.getState().generateTasks(layout);
+    const state = useSimulationStore.getState().state;
+    expect(useSimulationStore.getState().config.taskCount).toBe(4);
+    expect(state.tasks).toHaveLength(4);
   });
 
   it("error boundary captures render errors into the debug store", () => {

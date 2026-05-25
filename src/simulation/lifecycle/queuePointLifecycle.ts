@@ -1,7 +1,7 @@
 import type { WarehouseLayout } from "../../models/layout";
 import type { QueuePointRuntimeState, SimulationState } from "../../models/simulation";
 import { cellKey } from "../../utils/gridMath";
-import { queuePointsForStation, queuePointRuntimeLoad } from "../../utils/queuePoints";
+import { queuePointIsDispatchable, queuePointsForStation, queuePointRuntimeLoad } from "../../utils/queuePoints";
 import { stationServiceOccupancy } from "./queueLaneLifecycle";
 
 export function createQueuePointStates(layout: WarehouseLayout): Record<string, QueuePointRuntimeState> {
@@ -25,16 +25,25 @@ export function syncQueuePointStates(layout: WarehouseLayout, state: SimulationS
     (layout.queuePoints ?? []).map((point) => {
       const previous = base[point.queuePointId];
       const occupyingRobot = state.robots.find((robot) => cellKey(robot.currentCell) === cellKey(point.cell));
+      const reservedRobotIds = (previous?.reservedRobotIds ?? []).filter((robotId) => {
+        const robot = state.robots.find((item) => item.robotId === robotId);
+        if (!robot?.assignedTaskId) return false;
+        const task = state.tasks.find((item) => item.taskId === robot.assignedTaskId);
+        return !task?.visitedQueuePoint;
+      });
+      const reservedTaskIds = (previous?.reservedTaskIds ?? []).filter((taskId) => {
+        if (!activeTaskIds.has(taskId)) return false;
+        const task = state.tasks.find((item) => item.taskId === taskId);
+        return !task?.visitedQueuePoint;
+      });
       return [
         point.queuePointId,
         {
           queuePointId: point.queuePointId,
           occupiedRobotId: occupyingRobot?.robotId,
           occupiedTaskId: occupyingRobot?.assignedTaskId,
-          reservedRobotIds: (previous?.reservedRobotIds ?? []).filter((robotId) =>
-            state.robots.some((robot) => robot.robotId === robotId && robot.assignedTaskId)
-          ),
-          reservedTaskIds: (previous?.reservedTaskIds ?? []).filter((taskId) => activeTaskIds.has(taskId)),
+          reservedRobotIds,
+          reservedTaskIds,
           capacity: Math.max(1, point.capacity)
         }
       ];
@@ -49,7 +58,7 @@ export function stationHasQueuePointDispatchCapacity(layout: WarehouseLayout, st
   if (!station) return false;
   const points = queuePointsForStation(layout, station);
   if (points.length === 0) return !stationServiceOccupancy(state, stationId);
-  return points.some((point) => queuePointRuntimeLoad(state, point) < Math.max(1, point.capacity));
+  return points.some((point) => queuePointIsDispatchable(state, point));
 }
 
 export function reserveQueuePoint(state: SimulationState, queuePointId: string | undefined, robotId: string, taskId: string): SimulationState {
@@ -87,4 +96,3 @@ export function releaseQueuePoint(state: SimulationState, queuePointId: string |
     }
   };
 }
-

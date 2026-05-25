@@ -30,6 +30,7 @@ export interface RuntimeInspectors {
     cell: string;
     stationIds: string[];
     appliesToAllStations: boolean;
+    waitPolicy: string;
     occupiedRobotId?: string;
     occupiedTaskId?: string;
     reservedRobotIds: string[];
@@ -98,6 +99,7 @@ export function createRuntimeInspectors(layout: WarehouseLayout, simulation: Sim
       cell: cellKey(point.cell),
       stationIds: point.stationIds,
       appliesToAllStations: point.appliesToAllStations,
+      waitPolicy: point.waitPolicy,
       occupiedRobotId: runtime?.occupiedRobotId,
       occupiedTaskId: runtime?.occupiedTaskId,
       reservedRobotIds: runtime?.reservedRobotIds ?? [],

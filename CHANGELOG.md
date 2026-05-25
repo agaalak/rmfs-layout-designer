@@ -16,6 +16,15 @@ Deferred:
 - The Direction UI still uses the existing cell-control panel while synchronizing directed links under the hood.
 - Legacy queue-lane types remain as deprecated import/test compatibility until a later cleanup removes the old API surface.
 
+## 2026-05-24 - Queue Pre-Point Traffic Fix
+
+- Fixed the live-instance "only one robot runs" regression by preserving explicit simulation setting edits across initialization instead of letting demo layout defaults overwrite them.
+- Restored Small Demo task generation to six tasks so the default demo exercises more than one robot.
+- Changed generated queue pre-points to `HOLD_UPSTREAM`, so they act as physical checkpoints rather than task-long station locks.
+- Released queue pre-point reservations once a robot reaches or passes the checkpoint, allowing following robots to approach safely without sharing the pre-point or station cell.
+- Changed traffic log wording from "collision prevented" to "move held before entry" for normal pre-move ownership denials.
+- Refined direction arrows with higher-contrast center-to-center strokes, rounded caps, and subtle white lift for better readability on dense layouts.
+
 ## 2026-05-16 - RAWSim-O Queue/Controller Alignment
 
 - Extracted queue-lane runtime behavior into `src/simulation/lifecycle/queueLaneLifecycle.ts`.

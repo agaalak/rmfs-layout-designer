@@ -25,6 +25,7 @@ import { checkSimulationInvariants } from "../simulation/invariants";
 
 interface SimulationStoreState {
   config: SimulationConfig;
+  configOverrides: Partial<SimulationConfig>;
   state: SimulationState;
   manualRackId?: string;
   manualStationId?: string;
@@ -89,12 +90,14 @@ function recordInvariantIssues(layout: WarehouseLayout, state: SimulationState, 
 
 export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
   config: defaultSimulationConfig,
+  configOverrides: {},
   state: initialState,
   manualRackId: undefined,
   manualStationId: undefined,
   setConfig: (patch) =>
     set((current) => ({
-      config: { ...current.config, ...patch }
+      config: { ...current.config, ...patch },
+      configOverrides: { ...current.configOverrides, ...patch }
     })),
   initialize: (layout) => {
     const errors = validateSimulationStart(layout);
@@ -112,7 +115,7 @@ export const useSimulationStore = create<SimulationStoreState>((set, get) => ({
       return errors;
     }
     set((current) => {
-      const config = { ...current.config, ...(layout.simulationConfig ?? {}) };
+      const config = { ...defaultSimulationConfig, ...(layout.simulationConfig ?? {}), ...current.configOverrides };
       const state = initializeSimulation(layout, config);
       recordInvariantIssues(layout, state, "initialize");
       return { state, config };

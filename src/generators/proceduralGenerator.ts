@@ -243,7 +243,7 @@ function addStation(
       priority: 0,
       capacity: 1,
       loadedOnly: true,
-      waitPolicy: "OCCUPY_POINT"
+      waitPolicy: "HOLD_UPSTREAM"
     });
   }
   queueCells.slice(1).forEach((queue) => setCell(cells, queue, "ROAD"));
@@ -537,7 +537,7 @@ export function generateProceduralLayout(params: GenerationParams): WarehouseLay
       ? ({
           ...(layout.simulationConfig ?? {}),
           robotCount: 4,
-          taskCount: 1,
+          taskCount: 6,
           unloadedSpeedMps: 2.4,
           loadedSpeedMps: 2,
           liftTimeSec: 4,

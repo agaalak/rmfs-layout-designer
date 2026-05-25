@@ -12,6 +12,8 @@ Queue lanes are deprecated for runtime behavior. Queue is now represented by `Qu
 - If the station is busy, the robot waits at the pre-point or upstream instead of entering the occupied station cell.
 - Station service still starts only when `robot.currentCell === station.cell`.
 
+Generated demos use `HOLD_UPSTREAM` pre-points. The pre-point is still physically exclusive, but it does not serialize the whole station workflow. A following robot may be dispatched toward the same station and will wait upstream if the checkpoint or station service cell is currently owned.
+
 ## Migration
 
 Legacy station queue cells and queue lanes are converted into queue pre-points during layout normalization. Legacy `QUEUE` cells become traversable road cells with queue pre-point markers where possible.

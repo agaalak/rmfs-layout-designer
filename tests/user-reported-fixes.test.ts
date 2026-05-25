@@ -162,7 +162,7 @@ describe("user-reported stabilization fixes", () => {
 
     const edgeSwap = runCollisionScenario("edge_swap_single_lane");
     expect(edgeSwap.collisionPreventionCount).toBeGreaterThan(0);
-    expect(edgeSwap.eventMessages.some((message) => message.includes("Collision prevented"))).toBe(true);
+    expect(edgeSwap.eventMessages.some((message) => message.includes("Move held before entry"))).toBe(true);
   });
 
   it("does not report a deadlock from same-tick dispatch reservation conflicts", () => {
